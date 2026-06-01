@@ -3,11 +3,11 @@
 ## Current State
 - **M0 — Initialization: COMPLETE and PUSHED.**
 - **M1 — Ingestion: COMPLETE — Increments 1–4 implemented.**
-- **M2 — Enrichment & Scoring: IN PROGRESS — Increment 1 implemented.**
+- **M2 — Enrichment & Scoring: IN PROGRESS — Increments 1–2 implemented.**
 - The three M0 control files (PROJECT_BRIEF.md, DIRECTION.md, PROGRESS.md)
   were committed and pushed to `origin/leadhunter` at commit `c8bf3d8`.
-- **Next step:** enrich/fill missing identity fields (opt-in network) and feed
-  scores back into ingestion outputs.
+- **Next step (Increment 3, planned):** persist enriched leads via upsert + a
+  dual-sink `EnrichmentStore` (consuming the `EnrichResult`s from Increment 2).
 
 ## M0 — Initialization (COMPLETE)
 - [x] Create `leadhunter/` control folder
@@ -104,6 +104,26 @@
 - [x] `python -m unittest discover -s leadhunter/tests` → 95 tests, GREEN.
 - [x] Stdlib-only (`abc`, `dataclasses`, `sqlite3`, `csv`, `json`, `datetime`).
 
+### Increment 2 — deterministic identity enrichment behind the opt-in (DONE)
+- [x] `enrichment/base.py` — `IdentityEnricher` ABC (`enrich()` +
+      `requires_network`), `EnrichResult` (lead/filled/method + `.changed`),
+      `EnrichmentNetworkNotAllowedError`. Distinct from scoring's `Enricher`.
+- [x] `enrichment/derive.py` — `DerivationEnricher` (no-network default): fills
+      empty `domain` from `email` (or `source_url` when no email); only fills
+      empty fields, never overwrites, always preserves `dedup_key`.
+- [x] `enrichment/pipeline.py` — `enrich_all()` driver returns
+      `(EnrichSummary, list[EnrichResult])`; read-only w.r.t. the store; refuses
+      `requires_network` enrichers unless `allow_network=True` (fail-closed).
+- [x] `enrichment/__init__.py` + `enrichment/README.md`.
+- [x] Hermetic tests (`tests/test_derive.py`, `test_enrich_pipeline.py`, 16 new):
+      domain-from-email/url, scheme-optional, email-preferred, no-overwrite,
+      dedup_key preserved, nothing-to-fill returns same lead, determinism;
+      driver summary/results, store-left-unmodified, idempotent second pass,
+      network refuse/allow gate (fake network enricher), empty store.
+- [x] `python -m unittest discover -s leadhunter/tests` → 111 tests, GREEN.
+- [x] Stdlib-only (`abc`, `dataclasses`, `urllib.parse`). Zero edits to existing
+      modules — purely additive; persistence deferred to Increment 3.
+
 ## Log
 - 2026-06-01: Recreated minimal M0 control files; committed at `c8bf3d8` and
   pushed to `origin/leadhunter`. M0 COMPLETE.
@@ -145,3 +165,12 @@
   additive — zero edits to existing ingestion/llm code or tests. 20 new
   hermetic tests (LLM mocked via `FakeProvider`); full suite 95 tests green.
   Stdlib-only. Next: enrichment of missing identity fields (opt-in network).
+- 2026-06-01: M2 Increment 2 implemented under `leadhunter/enrichment/` —
+  deterministic identity enrichment behind a new `IdentityEnricher` contract
+  (distinct from scoring's `Enricher`). `DerivationEnricher` (no-network
+  default) fills the empty `domain` from `email`/`source_url`, only filling
+  empty fields and preserving `dedup_key`. `enrich_all()` returns both
+  `EnrichResult`s and an `EnrichSummary`, is read-only w.r.t. the store, and is
+  fail-closed for `requires_network` enrichers. 16 new hermetic tests; full
+  suite 111 tests green. Stdlib-only, purely additive. Next: Increment 3 —
+  persist enriched leads via upsert + dual-sink `EnrichmentStore`.

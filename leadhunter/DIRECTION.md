@@ -28,8 +28,20 @@ SQLite (truth) and a derived CSV mirror, reusing the M1 dual-sink pattern.
   baseline) + dual-sink `ScoreStore` (`lead_scores` table + derived CSV mirror)
   and `score_all()` driver. Stdlib-only, hermetic (95 tests green; LLM mocked
   via a `FakeProvider`). Code under `leadhunter/scoring/`.
-- **Later increments:** enrich/fill missing identity fields (opt-in network),
-  feed scores back into ingestion outputs, additional signals.
+- **Increment 2 (DONE):** deterministic **identity enrichment** behind a new
+  `IdentityEnricher` contract (distinct from scoring's `Enricher`) under
+  `leadhunter/enrichment/`. `DerivationEnricher` is the no-network default —
+  fills the empty `domain` field from `email` (or `source_url`), only ever
+  *filling* empty fields and always preserving `dedup_key`. `enrich_all()`
+  driver returns both per-lead `EnrichResult`s (in-memory artifact + handoff to
+  the persistence increment) and an `EnrichSummary`; it is read-only w.r.t. the
+  store and refuses `requires_network` enrichers unless `allow_network=True`
+  (fail-closed). Stdlib-only, hermetic (111 tests green). Purely additive.
+- **Increment 3 (NEXT, planned):** persist enriched leads via **upsert + a
+  dual-sink `EnrichmentStore`** (consuming the `EnrichResult`s from Increment 2).
+- **Later increments:** opt-in **network** identity enricher (fill email/phone
+  that can't be derived deterministically); feed scores back into ingestion
+  outputs; additional signals.
 
 ## M1 — Ingestion
 Locked objective: ingest raw lead sources and **persist to BOTH a database and
