@@ -40,7 +40,7 @@ plan. Mirrors the M2 fail-closed pattern: a deterministic baseline always
 produces a valid plan with no network/live LLM; the pluggable LLM is an
 **optional** booster that can only refine (never regress) the plan.
 
-- **Increment 1 (IN PROGRESS):** prompt → `SearchPlan`. New additive
+- **Increment 1 (DONE):** prompt → `SearchPlan`. New additive
   `leadhunter/planning/` package: `SearchPlan` record + `PlanBuilder` contract;
   deterministic `RulePlanBuilder` (regex/keyword parse of count, required contact
   fields, location, and business vertical — no network); optional fail-closed

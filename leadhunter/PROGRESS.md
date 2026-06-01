@@ -5,7 +5,7 @@
 - **M1 — Ingestion: COMPLETE — Increments 1–4 implemented.**
 - **M2 — Enrichment & Scoring: COMPLETE — Increments 1–5 implemented.**
 - **M3 — Planning & Discovery: IN PROGRESS — Increment 1 (prompt→SearchPlan)
-  implemented this run.**
+  DONE.**
 - The three M0 control files (PROJECT_BRIEF.md, DIRECTION.md, PROGRESS.md)
   were committed and pushed to `origin/leadhunter` at commit `c8bf3d8`.
 - Recorded the full app **Locked Objective** and the **M3–M6 roadmap** into
@@ -321,3 +321,11 @@
   21 new hermetic tests (LLM mocked via `FakeProvider`); full suite 173 tests
   green. Stdlib-only, purely additive. Next: M3 Increment 2 — discover candidate
   open-web sources from a `SearchPlan`.
+- 2026-06-01: Checkpoint finalized — M3 Increment 1 (prompt→SearchPlan) marked
+  DONE in PROGRESS.md and DIRECTION.md. New additive `leadhunter/planning/`
+  package landed: `base.py` (`SearchPlan`/`PlanBuilder`), `rules.py`
+  (deterministic `RulePlanBuilder`), `llm_planner.py` (fail-closed `LLMPlanBuilder`
+  + `build_plan()`), `__init__.py`, `README.md`, plus `tests/test_planning.py`
+  (21 new cases). Full suite 173 tests green. App Locked Objective and the
+  M3–M6 roadmap recorded in DIRECTION.md; PROJECT_BRIEF.md status refreshed.
+  Next: M3 Increment 2 — discover candidate open-web sources from a `SearchPlan`.
