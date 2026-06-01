@@ -15,4 +15,5 @@ can prioritize outreach.
 ## Status
 M3 — Planning & Discovery (in progress). M0–M2 complete: control files,
 ingestion (dual-sink DB + spreadsheet), pluggable LLM, enrichment, and scoring
-are in place. M3 Increment 1 adds the one-box prompt → `SearchPlan` front door.
+are in place. M3 Increment 1 adds the one-box prompt → `SearchPlan` front door;
+Increment 2 turns a `SearchPlan` into ranked candidate open-web sources.

@@ -5,13 +5,14 @@
 - **M1 — Ingestion: COMPLETE — Increments 1–4 implemented.**
 - **M2 — Enrichment & Scoring: COMPLETE — Increments 1–5 implemented.**
 - **M3 — Planning & Discovery: IN PROGRESS — Increment 1 (prompt→SearchPlan)
-  DONE.**
+  and Increment 2 (SearchPlan→candidate sources) DONE.**
 - The three M0 control files (PROJECT_BRIEF.md, DIRECTION.md, PROGRESS.md)
   were committed and pushed to `origin/leadhunter` at commit `c8bf3d8`.
 - Recorded the full app **Locked Objective** and the **M3–M6 roadmap** into
   DIRECTION.md this run.
-- **Next step:** M3 Increment 2 — discover candidate open-web sources from a
-  `SearchPlan` (prefer official APIs; responsible-use opt-in for risky scraping).
+- **Next step:** M3 Increment 3 — a network-backed source discoverer behind the
+  `allow_network` opt-in (e.g. live web search), and/or persisting candidate
+  sources to a dual-sink store; then M4 (human-like browsing & extraction).
 
 ## M0 — Initialization (COMPLETE)
 - [x] Create `leadhunter/` control folder
@@ -227,6 +228,43 @@
 - [x] Stdlib-only (`abc`, `dataclasses`, `re`, `json`). Zero edits to existing
       modules/tests — purely additive (new `planning/` package).
 
+### Increment 2 — SearchPlan → ranked candidate sources (DONE)
+- [x] `discovery/base.py` — `CandidateSource` record (kind/name/query/risk/
+      requires_network/rationale/score/rank + `to_row`/`from_row` round-trip +
+      `COLUMNS`); `SourceDiscoverer` ABC (`discover(plan)` + `requires_network`);
+      `preference_score()` + `rank_candidates()` (deterministic total order:
+      score desc, then name, then query); kind/risk vocab constants;
+      `DiscoveryError` / `DiscoveryNetworkNotAllowedError`.
+- [x] `discovery/rules.py` — `RuleSourceDiscoverer`, the deterministic no-network
+      floor: maps a `SearchPlan` to one candidate per preference tier — official
+      **Overpass** API (`official_api`, low risk, built via a vertical→OSM-tag
+      map with a case-insensitive name fallback and an area clause from the
+      location), structured **Nominatim** directory (`structured_directory`, low
+      risk), and freeform **web search** (`web_search`, high risk) — ranked so
+      the safest/most-compliant source surfaces first and risky scraping last.
+- [x] `discovery/pipeline.py` — `discover_sources(plan, discoverers=None, *,
+      allow_network=False)` driver: defaults to the offline baseline, merges +
+      de-dupes candidates by `(kind, query)`, re-ranks, and returns
+      `(DiscoverySummary, list[CandidateSource])`. Fail-closed: refuses a
+      `requires_network` discoverer unless `allow_network=True`.
+- [x] `discovery/__init__.py` + `discovery/README.md`.
+- [x] Responsible use: official/structured sources ranked ahead of freeform web
+      search; risky candidates tagged `risk="high"` and never first; discovery
+      performs no network I/O of its own (the baseline is offline); robots.txt/
+      rate-limit/ToS handling stays in the ingestion network layer that *acts*
+      on a candidate.
+- [x] Hermetic tests (`tests/test_discovery.py`, 16 new): record round-trip +
+      vocab validation + column/row parity; rule emits-Overpass-from-plan,
+      preference ranking (official→structured→web) + rank indices, web query
+      composition, risky-web tagged/never-first, determinism, blank-location
+      (area clause omitted), unknown-vertical name match, offline discoverer;
+      driver default run + summary counts, merge/dedupe across discoverers, and
+      the network opt-in gate (refuse without / run with `allow_network`) via an
+      in-memory `FakeDiscoverer`. No network, no real I/O.
+- [x] `python -m unittest discover -s leadhunter/tests` → 189 tests, GREEN.
+- [x] Stdlib-only (`abc`, `dataclasses`, `json`, `re`). Zero edits to existing
+      modules/tests — purely additive (new `discovery/` package).
+
 ## Log
 - 2026-06-01: Recreated minimal M0 control files; committed at `c8bf3d8` and
   pushed to `origin/leadhunter`. M0 COMPLETE.
@@ -329,3 +367,17 @@
   (21 new cases). Full suite 173 tests green. App Locked Objective and the
   M3–M6 roadmap recorded in DIRECTION.md; PROJECT_BRIEF.md status refreshed.
   Next: M3 Increment 2 — discover candidate open-web sources from a `SearchPlan`.
+- 2026-06-01: M3 Increment 2 implemented under `leadhunter/discovery/` — turn a
+  `SearchPlan` into a ranked list of candidate sources. `CandidateSource`
+  describes *where* to look (kind/risk/query/requires_network + provenance);
+  the deterministic `RuleSourceDiscoverer` maps a plan to one candidate per
+  preference tier (official Overpass API > structured Nominatim directory >
+  freeform web search), ranked so the safest/most-compliant source surfaces
+  first and risky scraping sorts last. `discover_sources()` merges + de-dupes by
+  `(kind, query)`, re-ranks, and is fail-closed (refuses a `requires_network`
+  discoverer unless `allow_network=True`). Discovery performs no network I/O of
+  its own — the baseline is offline; the network gate is the seam for a future
+  live discoverer. 16 new hermetic tests; full suite 189 tests green.
+  Stdlib-only, purely additive (new `discovery/` package; zero edits to existing
+  modules/tests). Next: M3 Increment 3 — a network-backed discoverer behind the
+  opt-in and/or persisting candidate sources to a dual-sink store; then M4.

@@ -47,8 +47,19 @@ produces a valid plan with no network/live LLM; the pluggable LLM is an
   `LLMPlanBuilder` (wraps `llm.factory` provider, merges over the baseline,
   falls back to it on network-off/no-provider/unavailable/unparseable);
   `build_plan()` driver. Stdlib-only, hermetic (LLM mocked via `FakeProvider`).
-- **Later increments:** discover candidate open-web sources from a `SearchPlan`
-  (prefer official APIs; responsible-use opt-in for risky scraping).
+- **Increment 2 (DONE):** discover candidate open-web sources from a
+  `SearchPlan`. New additive `leadhunter/discovery/` package: `CandidateSource`
+  record (kind/name/query/risk/requires_network/rationale/score/rank, with
+  `to_row`/`from_row`) + `SourceDiscoverer` contract; deterministic
+  `RuleSourceDiscoverer` maps a plan to one candidate per preference tier
+  (official Overpass API > structured Nominatim directory > freeform web search),
+  ranked so the safest/most-compliant source surfaces first and risky scraping
+  sorts last; `rank_candidates` total order; `discover_sources()` driver merges +
+  de-dupes by `(kind, query)`, re-ranks, and is fail-closed (refuses a
+  `requires_network` discoverer unless `allow_network=True`). Discovery itself
+  performs no network I/O; the baseline is offline. Stdlib-only, hermetic.
+- **Later increments:** a network-backed discoverer behind the opt-in (e.g. live
+  web search), and persisting candidates to a dual-sink store.
 
 ## M2 — Enrichment & Scoring
 Locked objective: turn persisted leads into qualification **scores** behind a
