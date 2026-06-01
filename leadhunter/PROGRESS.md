@@ -2,11 +2,11 @@
 
 ## Current State
 - **M0 — Initialization: COMPLETE and PUSHED.**
-- **M1 — Ingestion: IN PROGRESS — Increments 1 & 2 implemented.**
+- **M1 — Ingestion: IN PROGRESS — Increments 1, 2 & 3 implemented.**
 - The three M0 control files (PROJECT_BRIEF.md, DIRECTION.md, PROGRESS.md)
   were committed and pushed to `origin/leadhunter` at commit `c8bf3d8`.
-- **Next step:** M1 Increment 3 — the first **network** ingestion source
-  (scraper) behind the opt-in `allow_network` switch + human-like browsing.
+- **Next step:** later M1 increments — pluggable LLM (Ollama default + free
+  hosted fallback); additional network sources as needed.
 
 ## M0 — Initialization (COMPLETE)
 - [x] Create `leadhunter/` control folder
@@ -38,9 +38,22 @@
 - [x] `python -m unittest discover -s leadhunter/tests` → 40 tests, GREEN
 - [x] Stdlib-only, no network
 
-### Increment 3 — first network source behind opt-in (NEXT)
-- [ ] Not started — scraper source (`requires_network = True`) gated by
-      `allow_network`, with human-like browsing per the locked principles.
+### Increment 3 — first network source behind opt-in (DONE)
+- [x] `ingestion/sources/overpass_source.py` — `OverpassSource`
+      (`requires_network = True`) over the OpenStreetMap **Overpass** open-data
+      API (ODbL); maps business POIs (name/website/phone/email) to leads,
+      skipping elements with no usable identity.
+- [x] Responsible-use: gated by the existing `allow_network` opt-in (fail
+      closed, no network at construction); honors `robots.txt`; polite delay,
+      bounded timeout, descriptive `User-Agent`. Stdlib-only (`urllib`, `json`).
+- [x] `ingestion/sources/__init__.py` — export `OverpassSource` +
+      `RobotsDisallowedError` (additive; no core-module changes).
+- [x] Unit tests (`tests/test_overpass_source.py`, 13 hermetic cases): network
+      mocked via a single `_http_get` seam — no live calls. Covers mapping,
+      website→domain, identity-skip, robots allow/disallow, delay, POST body,
+      and pipeline opt-in refuse/allow + dual-sink integrity + idempotency.
+- [x] `python -m unittest discover -s leadhunter/tests` → 53 tests, GREEN
+- [x] Stdlib-only; network truly gated behind `allow_network`.
 
 ## Log
 - 2026-06-01: Recreated minimal M0 control files; committed at `c8bf3d8` and
@@ -59,3 +72,11 @@
   16 new tests incl. dual-sink integrity (CSV == SQLite) and idempotency.
   Full suite 40 tests green. Stdlib-only, no network. Next: Increment 3 — first
   network source behind the opt-in switch.
+- 2026-06-01: M1 Increment 3 implemented — first **network** source
+  (`OverpassSource`) over the OpenStreetMap Overpass open-data API (ODbL),
+  gated by the existing `allow_network` opt-in (fail closed, no network at
+  construction), honoring robots.txt with a polite delay/timeout/User-Agent.
+  Maps business POIs to leads (skipping no-identity elements) through the
+  unchanged normalize/dedup/persist flow. 13 hermetic tests (network mocked via
+  a single `_http_get` seam — no live calls). Full suite 53 tests green.
+  Stdlib-only. Next: pluggable LLM and further network sources.

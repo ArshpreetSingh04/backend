@@ -26,8 +26,10 @@ scraping behind an opt-in switch.
   (CSV/JSON/JSONL) + `ingest()` pipeline feeding normalize/dedup/persist.
   Responsible-use opt-in enforced now via `NetworkNotAllowedError` (network
   sources refused unless `allow_network=True`). Stdlib-only, unit-tested.
-- **Increment 3 (next):** first **network** source (scraper) behind the
-  opt-in switch, with human-like browsing.
+- **Increment 3 (DONE):** first **network** source — `OverpassSource` over the
+  OpenStreetMap Overpass open-data API (ODbL) behind the `allow_network` opt-in,
+  honoring robots.txt + polite rate limiting. Stdlib-only, network mocked in
+  tests (53 total, green).
 - **Later increments:** pluggable LLM (Ollama default + free hosted fallback).
 
 ## Decisions
