@@ -45,9 +45,17 @@ SQLite (truth) and a derived CSV mirror, reusing the M1 dual-sink pattern.
   `persist_enrichments()` consumes Increment 2's `EnrichResult`s;
   `enrich_and_persist()` chains enrich→persist and propagates the fail-closed
   network opt-in. Stdlib-only, hermetic (124 tests green). Purely additive.
-- **Increment 4 (NEXT, planned):** opt-in **network** identity enricher (fill
-  email/phone that can't be derived deterministically), behind the existing
-  `allow_network` gate.
+- **Increment 4 (DONE):** opt-in **network** identity enricher
+  (`WebContactEnricher`) under `leadhunter/enrichment/`. Fills empty
+  `email`/`phone` by fetching the lead's **own** published website (from
+  `source_url`, else `https://<domain>`) and parsing `mailto:`/`tel:` links
+  (plain-text email fallback) — reading the owner's own contact page, not an
+  aggregator/broker. Fail-closed behind the existing `allow_network` gate (no
+  I/O at construction; none when nothing to fill or no target); honors
+  `robots.txt` (`RobotsDisallowedError`), bounded `timeout`/`max_bytes`, polite
+  `delay`, descriptive `User-Agent`. Only fills empty fields, preserves
+  `dedup_key`. Stdlib-only, hermetic (137 tests green; network mocked via the
+  `_http_get` seam). Purely additive.
 - **Later increments:** feed scores/enrichment back into ingestion outputs;
   additional signals.
 

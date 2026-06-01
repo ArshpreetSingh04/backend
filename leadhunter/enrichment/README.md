@@ -30,8 +30,18 @@ class IdentityEnricher(abc.ABC):
   deterministic, no I/O. Derives the structured `domain` field from fields
   already present: from `email` (part after `@`), or from `source_url` (host)
   when no email is available. Fields that can't be derived deterministically
-  (e.g. email, phone) are out of scope and belong to a later opt-in network
-  enricher.
+  (e.g. email, phone) are out of scope and belong to the opt-in network
+  enricher below.
+- **`WebContactEnricher`** (`requires_network = True`) — opt-in network enricher.
+  Fills empty `email`/`phone` by fetching the lead's **own** published website
+  (from `source_url`, else `https://<domain>`) and parsing `mailto:`/`tel:`
+  links (with a plain-text email fallback). Reading the owner's own published
+  contact details is the responsible choice — not a third-party aggregator or
+  paid broker. Fail-closed behind the driver's `allow_network` opt-in (no I/O at
+  construction, none when there's nothing to fill or no fetchable target);
+  honors `robots.txt` (raising `RobotsDisallowedError`), with a bounded
+  `timeout`/`max_bytes`, a polite `delay`, and a descriptive `User-Agent`. Only
+  fills empty fields and preserves `dedup_key` even when `email` is populated.
 
 ## Driver
 
@@ -73,8 +83,8 @@ regenerated *from* SQLite after every write, so the two never diverge.
 
 ## Next increment
 
-Opt-in **network** identity enricher (fill `email`/`phone` that can't be derived
-deterministically), then feed scores/enrichment back into ingestion outputs.
+Feed scores/enrichment back into ingestion outputs; additional opt-in network
+signals as needed.
 
 ## Tests
 

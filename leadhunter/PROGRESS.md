@@ -3,12 +3,11 @@
 ## Current State
 - **M0 — Initialization: COMPLETE and PUSHED.**
 - **M1 — Ingestion: COMPLETE — Increments 1–4 implemented.**
-- **M2 — Enrichment & Scoring: IN PROGRESS — Increments 1–3 implemented.**
+- **M2 — Enrichment & Scoring: IN PROGRESS — Increments 1–4 implemented.**
 - The three M0 control files (PROJECT_BRIEF.md, DIRECTION.md, PROGRESS.md)
   were committed and pushed to `origin/leadhunter` at commit `c8bf3d8`.
-- **Next step (Increment 4, planned):** opt-in **network** identity enricher
-  (fill email/phone that can't be derived deterministically) behind the existing
-  `allow_network` gate.
+- **Next step:** feed scores/enrichment back into ingestion outputs; additional
+  opt-in network signals as needed.
 
 ## M0 — Initialization (COMPLETE)
 - [x] Create `leadhunter/` control folder
@@ -147,6 +146,29 @@
 - [x] Stdlib-only (`sqlite3`, `csv`, `json`, `datetime`). Zero edits to existing
       modules — purely additive.
 
+### Increment 4 — opt-in network identity enricher (`WebContactEnricher`) (DONE)
+- [x] `enrichment/web_contact.py` — `WebContactEnricher` (`requires_network =
+      True`): fills empty `email`/`phone` from the lead's **own** published
+      website (`source_url`, else `https://<domain>`) by parsing `mailto:`/`tel:`
+      links with a plain-text email fallback. Reads the owner's own contact page
+      — not an aggregator/broker. Only fills empty fields, preserves `dedup_key`.
+- [x] Responsible-use: fail-closed behind the existing `allow_network` opt-in
+      (no I/O at construction; short-circuits with no network when both fields
+      are set or there's no fetchable target); honors `robots.txt`
+      (`RobotsDisallowedError`); bounded `timeout`/`max_bytes`, polite `delay`,
+      descriptive `User-Agent`. Single `_http_get` seam.
+- [x] `enrichment/__init__.py` exports `WebContactEnricher` +
+      `RobotsDisallowedError` (additive); `enrichment/README.md` updated.
+- [x] Hermetic tests (`tests/test_network_enrich.py`, 13 new): mailto/tel parse,
+      plain-text fallback, no-overwrite, no-fetch short-circuit (nothing to fill
+      / no target), `dedup_key` preserved, `source_url` preferred, robots refuse,
+      polite delay, no-match unchanged; pipeline opt-in refuse/allow +
+      `enrich_and_persist` dual-sink integrity (CSV == SQLite) + idempotency.
+      Network mocked via the `_http_get` seam — no live calls.
+- [x] `python -m unittest discover -s leadhunter/tests` → 137 tests, GREEN.
+- [x] Stdlib-only (`urllib`, `re`, `html`, `time`, `dataclasses`). Zero edits to
+      existing modules/tests — purely additive (plus the `__init__` export/docs).
+
 ## Log
 - 2026-06-01: Recreated minimal M0 control files; committed at `c8bf3d8` and
   pushed to `origin/leadhunter`. M0 COMPLETE.
@@ -206,3 +228,15 @@
   with the fail-closed network opt-in. 13 new hermetic tests; full suite 124
   tests green. Stdlib-only, purely additive. Next: Increment 4 — opt-in network
   identity enricher (fill email/phone) behind the `allow_network` gate.
+- 2026-06-01: M2 Increment 4 implemented under `leadhunter/enrichment/` —
+  opt-in **network** identity enricher `WebContactEnricher` (`requires_network =
+  True`). Fills empty `email`/`phone` from the lead's **own** published website
+  (`source_url`, else `https://<domain>`) by parsing `mailto:`/`tel:` links with
+  a plain-text email fallback — reading the owner's own contact page, not an
+  aggregator/broker. Fail-closed behind the existing `allow_network` gate (no
+  I/O at construction; short-circuits with no network when nothing to fill or no
+  target); honors `robots.txt`, bounded `timeout`/`max_bytes`, polite `delay`,
+  descriptive `User-Agent`. Only fills empty fields, preserves `dedup_key`. 13
+  new hermetic tests (network mocked via the `_http_get` seam); full suite 137
+  tests green. Stdlib-only, purely additive. Next: feed scores/enrichment back
+  into ingestion outputs.
