@@ -3,11 +3,15 @@
 ## Current State
 - **M0 — Initialization: COMPLETE and PUSHED.**
 - **M1 — Ingestion: COMPLETE — Increments 1–4 implemented.**
-- **M2 — Enrichment & Scoring: IN PROGRESS — Increments 1–5 implemented.**
+- **M2 — Enrichment & Scoring: COMPLETE — Increments 1–5 implemented.**
+- **M3 — Planning & Discovery: IN PROGRESS — Increment 1 (prompt→SearchPlan)
+  implemented this run.**
 - The three M0 control files (PROJECT_BRIEF.md, DIRECTION.md, PROGRESS.md)
   were committed and pushed to `origin/leadhunter` at commit `c8bf3d8`.
-- **Next step:** additional signals (richer scoring inputs, more opt-in network
-  sources) as needed.
+- Recorded the full app **Locked Objective** and the **M3–M6 roadmap** into
+  DIRECTION.md this run.
+- **Next step:** M3 Increment 2 — discover candidate open-web sources from a
+  `SearchPlan` (prefer official APIs; responsible-use opt-in for risky scraping).
 
 ## M0 — Initialization (COMPLETE)
 - [x] Create `leadhunter/` control folder
@@ -193,6 +197,36 @@
 - [x] Stdlib-only (`sqlite3`, `csv`, `json`, `dataclasses`). Zero edits to
       existing modules/tests — purely additive (new `output/` package).
 
+## M3 — Planning & Discovery (IN PROGRESS)
+
+### Increment 1 — prompt → SearchPlan (DONE)
+- [x] `planning/base.py` — `SearchPlan` record (vertical, location,
+      required_fields, target_count, raw_prompt, method) + `make()` normalizer
+      (canonical field order, count floored at 1) + `PlanBuilder` ABC +
+      `PlanError`; `normalize_fields`, `DEFAULT_TARGET_COUNT`, `CANONICAL_FIELDS`.
+- [x] `planning/rules.py` — `RulePlanBuilder`, the deterministic no-network floor:
+      regex/keyword parse of count (first integer), required contact fields
+      (email/phone/website, canonical order), location (after in/near/around/…),
+      and the business vertical (command words + count stripped, last token
+      singularized: dentists→dentist, agencies→agency, businesses→business).
+- [x] `planning/llm_planner.py` — `LLMPlanBuilder`: optional booster behind the
+      same contract, wraps a baseline + optional `LLMProvider`. Fail-closed —
+      returns the baseline plan unchanged when network is off, no/unavailable
+      provider, or unparseable reply; otherwise **merges** the model's JSON over
+      the baseline (omitted fields keep baseline values). `build_plan()` driver.
+- [x] `planning/__init__.py` + `planning/README.md`.
+- [x] Hermetic tests (`tests/test_planning.py`, 21 new): rule parse of the full
+      example, default count, no-fields, website + canonical order,
+      singularization variants, multi-word vertical, near/around markers,
+      no-location, command-word stripping, determinism, count floor; LLMPlanBuilder
+      use-when-allowed + every fallback path (network off, no provider,
+      unavailable, malformed JSON, LLMError) + partial-JSON merge + prose
+      tolerance, via an in-memory `FakeProvider`; `build_plan` rule/llm paths.
+      No network, no real LLM.
+- [x] `python -m unittest discover -s leadhunter/tests` → 173 tests, GREEN.
+- [x] Stdlib-only (`abc`, `dataclasses`, `re`, `json`). Zero edits to existing
+      modules/tests — purely additive (new `planning/` package).
+
 ## Log
 - 2026-06-01: Recreated minimal M0 control files; committed at `c8bf3d8` and
   pushed to `origin/leadhunter`. M0 COMPLETE.
@@ -277,3 +311,13 @@
   optional; all source tables (incl. M1 `leads`) are never mutated. 15 new
   hermetic tests; full suite 152 tests green. Stdlib-only, purely additive.
   Next: additional signals as needed.
+- 2026-06-01: Recorded the app **Locked Objective** and the **M3–M6 roadmap** in
+  DIRECTION.md (the front door was previously undocumented). M2 marked COMPLETE.
+  M3 Increment 1 implemented under `leadhunter/planning/` — the one-box prompt →
+  structured `SearchPlan` front door. Deterministic `RulePlanBuilder` parses
+  count/required-fields/location/vertical with zero network; optional fail-closed
+  `LLMPlanBuilder` refines (merges over) the baseline and degrades to it on any
+  network-off/unavailable/unparseable path; `build_plan()` ties them together.
+  21 new hermetic tests (LLM mocked via `FakeProvider`); full suite 173 tests
+  green. Stdlib-only, purely additive. Next: M3 Increment 2 — discover candidate
+  open-web sources from a `SearchPlan`.

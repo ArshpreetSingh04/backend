@@ -4,6 +4,14 @@
 Build a reliable backend that turns raw signals into qualified, actionable
 sales leads.
 
+## Locked Objective (App)
+Standalone do-it-for-me lead-gen app; ONE "Find Leads" box; one natural-language
+prompt; LLM agent plans, drives a browser HUMAN-LIKE, discovers/visits open-web
+sources, extracts + de-duplicates + enriches leads, persists to DB AND
+spreadsheet; pluggable LLM default free/local Ollama + free hosted fallback;
+responsible use: prefer official APIs, respect robots.txt/rate limits/ToS, risky
+scraping behind opt-in module with warnings.
+
 ## Guiding Principles
 - Ship small, verifiable increments tied to milestones.
 - Keep control files (this file, PROGRESS.md, PROJECT_BRIEF.md) current.
@@ -12,8 +20,35 @@ sales leads.
 ## Milestones
 - **M0 — Initialization (DONE):** control files in place, repo scaffolded.
 - **M1 — Ingestion (DONE):** ingest and persist raw lead sources.
-- **M2 — Enrichment & Scoring (current):** enrich leads and assign
+- **M2 — Enrichment & Scoring (DONE):** enrich leads and assign
   qualification scores.
+- **M3 — Planning & Discovery (current):** turn the one-box prompt into a
+  `SearchPlan`, then discover candidate open-web sources from the plan.
+- **M4 — Human-like Browsing & Extraction:** drive a real browser human-like to
+  visit sources and extract raw lead records; risky scraping opt-in.
+- **M5 — Dedupe + Enrich + Persist (end-to-end):** plan → discover → browse →
+  extract → dedupe → enrich → score → persist to DB AND spreadsheet.
+- **M6 — Acceptance & App shell:** one "Find Leads" box; acceptance:
+  "Find me 50 dentists in Austin, Texas with email and phone" → 50 deduped
+  enriched leads in the table AND an exportable sheet.
+
+## M3 — Planning & Discovery
+Locked objective: open the locked-objective front door — turn the single
+"Find Leads" box (one natural-language prompt) into a structured, machine-readable
+`SearchPlan`, then (later increment) discover candidate open-web sources from the
+plan. Mirrors the M2 fail-closed pattern: a deterministic baseline always
+produces a valid plan with no network/live LLM; the pluggable LLM is an
+**optional** booster that can only refine (never regress) the plan.
+
+- **Increment 1 (IN PROGRESS):** prompt → `SearchPlan`. New additive
+  `leadhunter/planning/` package: `SearchPlan` record + `PlanBuilder` contract;
+  deterministic `RulePlanBuilder` (regex/keyword parse of count, required contact
+  fields, location, and business vertical — no network); optional fail-closed
+  `LLMPlanBuilder` (wraps `llm.factory` provider, merges over the baseline,
+  falls back to it on network-off/no-provider/unavailable/unparseable);
+  `build_plan()` driver. Stdlib-only, hermetic (LLM mocked via `FakeProvider`).
+- **Later increments:** discover candidate open-web sources from a `SearchPlan`
+  (prefer official APIs; responsible-use opt-in for risky scraping).
 
 ## M2 — Enrichment & Scoring
 Locked objective: turn persisted leads into qualification **scores** behind a

@@ -13,4 +13,6 @@ can prioritize outreach.
 - Owner: arshpreetsingh2006@gmail.com
 
 ## Status
-M0 — Initialization.
+M3 — Planning & Discovery (in progress). M0–M2 complete: control files,
+ingestion (dual-sink DB + spreadsheet), pluggable LLM, enrichment, and scoring
+are in place. M3 Increment 1 adds the one-box prompt → `SearchPlan` front door.
