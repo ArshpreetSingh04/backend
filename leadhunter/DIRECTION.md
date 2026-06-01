@@ -56,8 +56,21 @@ SQLite (truth) and a derived CSV mirror, reusing the M1 dual-sink pattern.
   `delay`, descriptive `User-Agent`. Only fills empty fields, preserves
   `dedup_key`. Stdlib-only, hermetic (137 tests green; network mocked via the
   `_http_get` seam). Purely additive.
-- **Later increments:** feed scores/enrichment back into ingestion outputs;
-  additional signals.
+- **Increment 5 (DONE):** **feed scores/enrichment back into the ingestion
+  output** via a new additive `leadhunter/output/` package. `QualifiedLead` is
+  the consolidated, flat record; `assemble_qualified()` **read-only** left-joins
+  the three dual-sink stores by `dedup_key` — ingestion `leads` (identity truth)
+  + `enriched_leads` (filled identity, preferred per-field) + `lead_scores`
+  (qualification) — and sorts by score desc so the hottest leads surface first.
+  `QualifiedLeadStore` persists a **fully derived snapshot** to its own
+  `qualified_leads` SQLite table (truth) + derived CSV mirror; `upsert()`
+  overwrites the whole row (idempotent — unchanged inputs write nothing), so a
+  rebuild after a rescore/re-enrichment refreshes the output. Enrichment/scoring
+  stores are optional (identity-only output when omitted); the M1 `leads` table
+  and all source tables are never mutated. Stdlib-only, hermetic (152 tests
+  green). Purely additive.
+- **Later increments:** additional signals (e.g. richer scoring inputs, more
+  opt-in network sources).
 
 ## M1 — Ingestion
 Locked objective: ingest raw lead sources and **persist to BOTH a database and

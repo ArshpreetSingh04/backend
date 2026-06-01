@@ -3,11 +3,11 @@
 ## Current State
 - **M0 — Initialization: COMPLETE and PUSHED.**
 - **M1 — Ingestion: COMPLETE — Increments 1–4 implemented.**
-- **M2 — Enrichment & Scoring: IN PROGRESS — Increments 1–4 implemented.**
+- **M2 — Enrichment & Scoring: IN PROGRESS — Increments 1–5 implemented.**
 - The three M0 control files (PROJECT_BRIEF.md, DIRECTION.md, PROGRESS.md)
   were committed and pushed to `origin/leadhunter` at commit `c8bf3d8`.
-- **Next step:** feed scores/enrichment back into ingestion outputs; additional
-  opt-in network signals as needed.
+- **Next step:** additional signals (richer scoring inputs, more opt-in network
+  sources) as needed.
 
 ## M0 — Initialization (COMPLETE)
 - [x] Create `leadhunter/` control folder
@@ -169,6 +169,30 @@
 - [x] Stdlib-only (`urllib`, `re`, `html`, `time`, `dataclasses`). Zero edits to
       existing modules/tests — purely additive (plus the `__init__` export/docs).
 
+### Increment 5 — feed scores/enrichment back into the ingestion output (DONE)
+- [x] `output/base.py` — `QualifiedLead` consolidated record (best-known identity
+      + score/tier/reasons/score_method + enrichment provenance) with `to_row`/
+      `from_row` round-trip and `scored`/`enriched` flags; shared `COLUMNS`.
+- [x] `output/assemble.py` — `assemble_qualified()` **read-only** left-join of the
+      three stores by `dedup_key` (enriched identity preferred per-field, else
+      ingested; score attached when present), sorted by score desc then key;
+      returns `(QualifiedSummary, list[QualifiedLead])`. Source stores optional.
+- [x] `output/output_store.py` — dual-sink `QualifiedLeadStore` (own
+      `qualified_leads` SQLite table = truth + derived CSV mirror). `upsert()`
+      overwrites the whole row (fully derived snapshot) and reports change;
+      `build_qualified_output()` assembles + persists, idempotent (unchanged
+      inputs write nothing).
+- [x] `output/__init__.py` + `output/README.md`.
+- [x] Hermetic tests (`tests/test_output.py`, 15 new): record round-trip + flags;
+      assemble identity fallback/enriched-preference/score-attach/sort/summary/
+      optional-stores; store dual-sink integrity (CSV == SQLite)/overwrite-on-
+      rescore/idempotency/reopen; driver end-to-end (hottest first, enriched
+      domain present, M1 leads untouched)/idempotent/no-optional-stores/rebuild-
+      after-rescore-refreshes.
+- [x] `python -m unittest discover -s leadhunter/tests` → 152 tests, GREEN.
+- [x] Stdlib-only (`sqlite3`, `csv`, `json`, `dataclasses`). Zero edits to
+      existing modules/tests — purely additive (new `output/` package).
+
 ## Log
 - 2026-06-01: Recreated minimal M0 control files; committed at `c8bf3d8` and
   pushed to `origin/leadhunter`. M0 COMPLETE.
@@ -240,3 +264,16 @@
   new hermetic tests (network mocked via the `_http_get` seam); full suite 137
   tests green. Stdlib-only, purely additive. Next: feed scores/enrichment back
   into ingestion outputs.
+- 2026-06-01: M2 Increment 5 implemented under `leadhunter/output/` — feed
+  scores/enrichment back into the ingestion output. `QualifiedLead` consolidates
+  best-known identity + qualification score + enrichment provenance into one flat
+  record; `assemble_qualified()` is a read-only left-join of the three dual-sink
+  stores by `dedup_key` (enriched identity preferred per-field, score attached
+  when present), sorted by score desc so the hottest leads surface first. The
+  dual-sink `QualifiedLeadStore` persists a fully derived snapshot to its own
+  `qualified_leads` SQLite table (truth) + derived CSV mirror; `upsert()`
+  overwrites the whole row (idempotent) and `build_qualified_output()` rebuilds
+  the output after a rescore/re-enrichment. Enrichment/scoring stores are
+  optional; all source tables (incl. M1 `leads`) are never mutated. 15 new
+  hermetic tests; full suite 152 tests green. Stdlib-only, purely additive.
+  Next: additional signals as needed.
