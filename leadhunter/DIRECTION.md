@@ -11,8 +11,25 @@ sales leads.
 
 ## Milestones
 - **M0 — Initialization (DONE):** control files in place, repo scaffolded.
-- **M1 — Ingestion (current):** ingest and persist raw lead sources.
-- **M2 — Enrichment & Scoring:** enrich leads and assign qualification scores.
+- **M1 — Ingestion (DONE):** ingest and persist raw lead sources.
+- **M2 — Enrichment & Scoring (current):** enrich leads and assign
+  qualification scores.
+
+## M2 — Enrichment & Scoring
+Locked objective: turn persisted leads into qualification **scores** behind a
+single `Enricher` contract. A deterministic baseline always produces a score
+without any network/live LLM; the pluggable LLM is an **optional** booster that
+can only ever improve a valid score (fail-closed). Scores persist to BOTH
+SQLite (truth) and a derived CSV mirror, reusing the M1 dual-sink pattern.
+
+- **Increment 1 (DONE):** scoring contract (`Score`, `Enricher`) + deterministic
+  `RuleScorer` floor (identity completeness/quality, role-email penalty) +
+  optional `LLMScorer` (wraps `llm.factory` provider, fail-closed fallback to
+  baseline) + dual-sink `ScoreStore` (`lead_scores` table + derived CSV mirror)
+  and `score_all()` driver. Stdlib-only, hermetic (95 tests green; LLM mocked
+  via a `FakeProvider`). Code under `leadhunter/scoring/`.
+- **Later increments:** enrich/fill missing identity fields (opt-in network),
+  feed scores back into ingestion outputs, additional signals.
 
 ## M1 — Ingestion
 Locked objective: ingest raw lead sources and **persist to BOTH a database and

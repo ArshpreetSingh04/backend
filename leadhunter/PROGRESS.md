@@ -2,11 +2,12 @@
 
 ## Current State
 - **M0 — Initialization: COMPLETE and PUSHED.**
-- **M1 — Ingestion: IN PROGRESS — Increments 1, 2, 3 & 4 implemented.**
+- **M1 — Ingestion: COMPLETE — Increments 1–4 implemented.**
+- **M2 — Enrichment & Scoring: IN PROGRESS — Increment 1 implemented.**
 - The three M0 control files (PROJECT_BRIEF.md, DIRECTION.md, PROGRESS.md)
   were committed and pushed to `origin/leadhunter` at commit `c8bf3d8`.
-- **Next step:** wire the pluggable LLM into enrichment/scoring (M2);
-  additional network sources as needed.
+- **Next step:** enrich/fill missing identity fields (opt-in network) and feed
+  scores back into ingestion outputs.
 
 ## M0 — Initialization (COMPLETE)
 - [x] Create `leadhunter/` control folder
@@ -77,6 +78,32 @@
 - [x] `python -m unittest discover -s leadhunter/tests` → 75 tests, GREEN
 - [x] Stdlib-only (`urllib`, `json`, `os`, `abc`).
 
+## M2 — Enrichment & Scoring (IN PROGRESS)
+
+### Increment 1 — scoring contract + RuleScorer + LLMScorer + ScoreStore (DONE)
+- [x] `scoring/base.py` — `Score` (clamped 0–100, derived tier, reasons, method)
+      + `Enricher` ABC + `clamp_score`/`tier_for` helpers.
+- [x] `scoring/rules.py` — `RuleScorer`, the deterministic no-network floor:
+      weighted identity signals (personal email +30 / role email +10, domain
+      +20, company +15, name +15, phone +10, source_url +10).
+- [x] `scoring/llm_scorer.py` — `LLMScorer`: optional booster behind the same
+      contract, wraps a baseline + optional `LLMProvider`. Fail-closed —
+      returns the baseline unchanged when network is off, no/unavailable
+      provider, or unparseable reply; can only improve a valid score.
+- [x] `scoring/score_store.py` — `ScoreStore` (`lead_scores` SQLite table =
+      truth + derived CSV mirror, idempotent upsert/rescore) + `score_all()`
+      driver. Reuses the M1 dual-sink pattern; no edits to existing code.
+- [x] `scoring/__init__.py` + `scoring/README.md`.
+- [x] Hermetic tests (`tests/test_scoring.py`, `test_score_store.py`, 20 new):
+      RuleScorer floor/hot/role-penalty/determinism/clamp + tier boundaries;
+      LLMScorer use-when-allowed + every fallback path (network off, no
+      provider, unavailable, malformed JSON, LLMError) + clamp + prose
+      tolerance, via an in-memory `FakeProvider`; ScoreStore dual-sink
+      integrity/idempotency/reopen; `score_all` per-lead coverage + stable
+      rescore. No network, no real LLM.
+- [x] `python -m unittest discover -s leadhunter/tests` → 95 tests, GREEN.
+- [x] Stdlib-only (`abc`, `dataclasses`, `sqlite3`, `csv`, `json`, `datetime`).
+
 ## Log
 - 2026-06-01: Recreated minimal M0 control files; committed at `c8bf3d8` and
   pushed to `origin/leadhunter`. M0 COMPLETE.
@@ -110,3 +137,11 @@
   localhost Ollama; the single HTTP seam is mocked, so 22 new tests are fully
   hermetic. Full suite 75 tests green. Stdlib-only. Next: wire the LLM into
   enrichment/scoring (M2).
+- 2026-06-01: M2 Increment 1 implemented under `leadhunter/scoring/` — scoring
+  contract (`Score`/`Enricher`), deterministic `RuleScorer` floor, optional
+  fail-closed `LLMScorer` (improves only a valid score; falls back to the
+  baseline with no network/live LLM), and dual-sink `ScoreStore` (`lead_scores`
+  SQLite truth + derived CSV mirror) with a `score_all()` driver. Purely
+  additive — zero edits to existing ingestion/llm code or tests. 20 new
+  hermetic tests (LLM mocked via `FakeProvider`); full suite 95 tests green.
+  Stdlib-only. Next: enrichment of missing identity fields (opt-in network).
