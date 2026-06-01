@@ -1,0 +1,8 @@
+# Generated ingestion artifacts (SQLite truth + CSV mirror)
+data/
+*.db
+*.csv
+
+# Python caches
+__pycache__/
+*.pyc
