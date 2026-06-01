@@ -47,10 +47,34 @@ write enriched leads back.
 A `requires_network` enricher is refused with `EnrichmentNetworkNotAllowedError`
 unless `allow_network=True` (fail-closed), mirroring the ingestion pipeline.
 
+## Persistence (`EnrichmentStore`)
+
+```python
+store = EnrichmentStore(db_path, csv_path)
+persist_enrichments(results, store)                 # consume enrich_all() output
+# or, in one call:
+processed, persisted = enrich_and_persist(lead_store, enricher, store,
+                                          *, allow_network=False)
+```
+
+Dual-sink persistence for enriched leads, reusing the `ScoreStore`/`LeadStore`
+pattern in its **own** `enriched_leads` table + derived CSV mirror — the M1
+`leads` table is never mutated. **SQLite is the source of truth**; the CSV is
+regenerated *from* SQLite after every write, so the two never diverge.
+
+- Keyed by `dedup_key` (the stable, layered identity key the whole pipeline uses).
+- `upsert(result)` is **fill-only**: a repeat `dedup_key` only populates columns
+  that are currently empty (never overwriting a non-empty value), unions the
+  recorded `filled` field names, and refreshes `method`/`enriched_at`. Returns
+  whether the row changed, so `persist_enrichments` is idempotent.
+- Each row stores the enriched `Lead` snapshot (`Lead.COLUMNS`) plus enrichment
+  metadata (`filled`, `method`, `enriched_at`); `all()` returns `(Lead, meta)`
+  pairs read back from SQLite.
+
 ## Next increment
 
-Persist enriched leads via upsert + a dual-sink `EnrichmentStore` (the `results`
-returned here are the clean handoff for that work).
+Opt-in **network** identity enricher (fill `email`/`phone` that can't be derived
+deterministically), then feed scores/enrichment back into ingestion outputs.
 
 ## Tests
 

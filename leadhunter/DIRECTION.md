@@ -37,11 +37,19 @@ SQLite (truth) and a derived CSV mirror, reusing the M1 dual-sink pattern.
   the persistence increment) and an `EnrichSummary`; it is read-only w.r.t. the
   store and refuses `requires_network` enrichers unless `allow_network=True`
   (fail-closed). Stdlib-only, hermetic (111 tests green). Purely additive.
-- **Increment 3 (NEXT, planned):** persist enriched leads via **upsert + a
-  dual-sink `EnrichmentStore`** (consuming the `EnrichResult`s from Increment 2).
-- **Later increments:** opt-in **network** identity enricher (fill email/phone
-  that can't be derived deterministically); feed scores back into ingestion
-  outputs; additional signals.
+- **Increment 3 (DONE):** persist enriched leads via **upsert + a dual-sink
+  `EnrichmentStore`** under `leadhunter/enrichment/`. Reuses the `ScoreStore`
+  pattern in its own `enriched_leads` SQLite table (truth) + derived CSV mirror —
+  the M1 `leads` table is never mutated. `upsert()` is fill-only and idempotent
+  (only fills empty columns, unions `filled`, preserves `dedup_key`).
+  `persist_enrichments()` consumes Increment 2's `EnrichResult`s;
+  `enrich_and_persist()` chains enrich→persist and propagates the fail-closed
+  network opt-in. Stdlib-only, hermetic (124 tests green). Purely additive.
+- **Increment 4 (NEXT, planned):** opt-in **network** identity enricher (fill
+  email/phone that can't be derived deterministically), behind the existing
+  `allow_network` gate.
+- **Later increments:** feed scores/enrichment back into ingestion outputs;
+  additional signals.
 
 ## M1 — Ingestion
 Locked objective: ingest raw lead sources and **persist to BOTH a database and

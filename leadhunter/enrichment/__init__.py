@@ -6,6 +6,8 @@ Public API:
 - `EnrichResult` / `EnrichmentNetworkNotAllowedError` — result + opt-in guard.
 - `DerivationEnricher` — deterministic, no-network default enricher.
 - `enrich_all` / `EnrichSummary` — the driver and its aggregate outcome.
+- `EnrichmentStore` — dual-sink persistence (SQLite truth + derived CSV mirror).
+- `persist_enrichments` / `enrich_and_persist` — write/convenience drivers.
 """
 
 from .base import (
@@ -14,6 +16,11 @@ from .base import (
     IdentityEnricher,
 )
 from .derive import DerivationEnricher
+from .enrichment_store import (
+    EnrichmentStore,
+    enrich_and_persist,
+    persist_enrichments,
+)
 from .pipeline import EnrichSummary, enrich_all
 
 __all__ = [
@@ -23,4 +30,7 @@ __all__ = [
     "DerivationEnricher",
     "enrich_all",
     "EnrichSummary",
+    "EnrichmentStore",
+    "persist_enrichments",
+    "enrich_and_persist",
 ]

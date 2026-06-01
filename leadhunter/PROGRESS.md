@@ -3,11 +3,12 @@
 ## Current State
 - **M0 — Initialization: COMPLETE and PUSHED.**
 - **M1 — Ingestion: COMPLETE — Increments 1–4 implemented.**
-- **M2 — Enrichment & Scoring: IN PROGRESS — Increments 1–2 implemented.**
+- **M2 — Enrichment & Scoring: IN PROGRESS — Increments 1–3 implemented.**
 - The three M0 control files (PROJECT_BRIEF.md, DIRECTION.md, PROGRESS.md)
   were committed and pushed to `origin/leadhunter` at commit `c8bf3d8`.
-- **Next step (Increment 3, planned):** persist enriched leads via upsert + a
-  dual-sink `EnrichmentStore` (consuming the `EnrichResult`s from Increment 2).
+- **Next step (Increment 4, planned):** opt-in **network** identity enricher
+  (fill email/phone that can't be derived deterministically) behind the existing
+  `allow_network` gate.
 
 ## M0 — Initialization (COMPLETE)
 - [x] Create `leadhunter/` control folder
@@ -124,6 +125,28 @@
 - [x] Stdlib-only (`abc`, `dataclasses`, `urllib.parse`). Zero edits to existing
       modules — purely additive; persistence deferred to Increment 3.
 
+### Increment 3 — dual-sink `EnrichmentStore` persistence (DONE)
+- [x] `enrichment/enrichment_store.py` — `EnrichmentStore` (own `enriched_leads`
+      SQLite table = truth + derived CSV mirror), keyed by `dedup_key`. Reuses
+      the `ScoreStore`/`LeadStore` pattern; the M1 `leads` table is never mutated.
+- [x] `upsert(result)` is **fill-only & idempotent**: only populates currently
+      empty columns (never overwrites a non-empty value), unions the recorded
+      `filled` field names, refreshes `method`/`enriched_at`, preserves `dedup_key`
+      as PK; returns whether the row changed. Each row stores the enriched `Lead`
+      snapshot + metadata (`filled`, `method`, `enriched_at`).
+- [x] `persist_enrichments(results, store)` consumes Increment 2's
+      `EnrichResult`s; `enrich_and_persist()` chains `enrich_all` → persist and
+      propagates the fail-closed `allow_network` opt-in.
+- [x] `enrichment/__init__.py` exports + `enrichment/README.md` updated (additive).
+- [x] Hermetic tests (`tests/test_enrichment_store.py`, 13 new): insert,
+      dual-sink integrity (CSV == SQLite), idempotency, fill-only no-overwrite +
+      `filled` union, `dedup_key` PK, unchanged-result snapshot, reopen-store;
+      driver end-to-end from a seeded `LeadStore`, idempotent re-persist,
+      `enrich_and_persist` convenience + network refuse/allow gate.
+- [x] `python -m unittest discover -s leadhunter/tests` → 124 tests, GREEN.
+- [x] Stdlib-only (`sqlite3`, `csv`, `json`, `datetime`). Zero edits to existing
+      modules — purely additive.
+
 ## Log
 - 2026-06-01: Recreated minimal M0 control files; committed at `c8bf3d8` and
   pushed to `origin/leadhunter`. M0 COMPLETE.
@@ -174,3 +197,12 @@
   fail-closed for `requires_network` enrichers. 16 new hermetic tests; full
   suite 111 tests green. Stdlib-only, purely additive. Next: Increment 3 —
   persist enriched leads via upsert + dual-sink `EnrichmentStore`.
+- 2026-06-01: M2 Increment 3 implemented under `leadhunter/enrichment/` —
+  dual-sink `EnrichmentStore` (own `enriched_leads` SQLite table = truth +
+  derived CSV mirror, reusing the `ScoreStore` pattern; the M1 `leads` table is
+  never mutated). `upsert()` is fill-only & idempotent (only fills empty columns,
+  unions `filled`, preserves `dedup_key`); `persist_enrichments()` consumes
+  Increment 2's `EnrichResult`s and `enrich_and_persist()` chains enrich→persist
+  with the fail-closed network opt-in. 13 new hermetic tests; full suite 124
+  tests green. Stdlib-only, purely additive. Next: Increment 4 — opt-in network
+  identity enricher (fill email/phone) behind the `allow_network` gate.
