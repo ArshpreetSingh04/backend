@@ -30,7 +30,14 @@ scraping behind an opt-in switch.
   OpenStreetMap Overpass open-data API (ODbL) behind the `allow_network` opt-in,
   honoring robots.txt + polite rate limiting. Stdlib-only, network mocked in
   tests (53 total, green).
-- **Later increments:** pluggable LLM (Ollama default + free hosted fallback).
+- **Increment 4 (DONE):** pluggable **LLM provider** layer — one `generate()`
+  interface over one "box". Local **Ollama** default (free) + generic
+  **OpenAI-compatible** hosted fallback (no vendor hard-coded, env-configured) +
+  `get_provider()` selection. Fail-closed `allow_network` opt-in applies to all
+  LLM calls (including localhost Ollama); single HTTP seam mocked in tests
+  (75 total, green). Code under `leadhunter/llm/`.
+- **Later increments:** wire the LLM into enrichment/scoring (M2); additional
+  network sources as needed.
 
 ## Decisions
 - Control files live under `leadhunter/` and are versioned with the code.
@@ -38,8 +45,9 @@ scraping behind an opt-in switch.
   `sqlite3`, `csv`, `json`, `hashlib`) — zero third-party deps, runs offline.
 - **Dual persistence:** SQLite is the source of truth; the spreadsheet (CSV)
   is a derived mirror regenerated from SQLite so the two never diverge.
-- **Pluggable LLM (locked, later):** local **Ollama** is the default with a
-  free hosted fallback.
+- **Pluggable LLM (locked, DONE in M1 Inc.4):** local **Ollama** is the default
+  with a generic OpenAI-compatible free hosted fallback (env-configured). All
+  LLM calls are fail-closed behind the `allow_network` opt-in.
 - **Scraping (locked, later):** human-like browsing; responsible scraping is
   **opt-in** only.
 - **Dedup key:** deterministic, layered — email > domain+company >

@@ -2,11 +2,11 @@
 
 ## Current State
 - **M0 — Initialization: COMPLETE and PUSHED.**
-- **M1 — Ingestion: IN PROGRESS — Increments 1, 2 & 3 implemented.**
+- **M1 — Ingestion: IN PROGRESS — Increments 1, 2, 3 & 4 implemented.**
 - The three M0 control files (PROJECT_BRIEF.md, DIRECTION.md, PROGRESS.md)
   were committed and pushed to `origin/leadhunter` at commit `c8bf3d8`.
-- **Next step:** later M1 increments — pluggable LLM (Ollama default + free
-  hosted fallback); additional network sources as needed.
+- **Next step:** wire the pluggable LLM into enrichment/scoring (M2);
+  additional network sources as needed.
 
 ## M0 — Initialization (COMPLETE)
 - [x] Create `leadhunter/` control folder
@@ -55,6 +55,28 @@
 - [x] `python -m unittest discover -s leadhunter/tests` → 53 tests, GREEN
 - [x] Stdlib-only; network truly gated behind `allow_network`.
 
+### Increment 4 — pluggable LLM provider (Ollama default + hosted fallback) (DONE)
+- [x] `llm/base.py` — `LLMProvider` ABC (`generate()` + `available()`),
+      error hierarchy (`LLMError`, `LLMNetworkNotAllowedError`,
+      `LLMUnavailableError`), fail-closed `allow_network` opt-in.
+- [x] `llm/ollama_provider.py` — `OllamaProvider` **default** (local, free):
+      POST `/api/generate`, `available()` probes `/api/tags`; env overrides
+      `OLLAMA_HOST` / `OLLAMA_MODEL`. Single `_http_post`/`_http_get` seam.
+- [x] `llm/hosted_provider.py` — `HostedProvider` free fallback: generic
+      **OpenAI-compatible** `/chat/completions`, no vendor hard-coded, env-config
+      `LLM_HOSTED_BASE_URL` / `LLM_HOSTED_MODEL` / `LLM_HOSTED_API_KEY`.
+- [x] `llm/factory.py` — `get_provider()` selection: `prefer`/`LLM_PROVIDER`
+      override → Ollama if available → hosted fallback → clear `LLMUnavailableError`.
+- [x] `llm/__init__.py` + `llm/README.md`.
+- [x] Opt-in applies to **all** LLM calls including localhost Ollama (fail closed,
+      no network at construction). All HTTP mocked via the seam — hermetic.
+- [x] Unit tests (`tests/test_llm_base.py`, `test_ollama_provider.py`,
+      `test_hosted_provider.py`, `test_llm_factory.py`): 22 new cases covering
+      the opt-in guard, request bodies, response parsing, availability, env
+      overrides, and selection/fallback logic. No real network/LLM calls.
+- [x] `python -m unittest discover -s leadhunter/tests` → 75 tests, GREEN
+- [x] Stdlib-only (`urllib`, `json`, `os`, `abc`).
+
 ## Log
 - 2026-06-01: Recreated minimal M0 control files; committed at `c8bf3d8` and
   pushed to `origin/leadhunter`. M0 COMPLETE.
@@ -80,3 +102,11 @@
   unchanged normalize/dedup/persist flow. 13 hermetic tests (network mocked via
   a single `_http_get` seam — no live calls). Full suite 53 tests green.
   Stdlib-only. Next: pluggable LLM and further network sources.
+- 2026-06-01: M1 Increment 4 implemented — pluggable **LLM provider** layer under
+  `leadhunter/llm/`: one `generate()` interface, local **Ollama** default (free)
+  and a generic **OpenAI-compatible** hosted fallback (no vendor hard-coded,
+  env-configured), plus `get_provider()` selection (Ollama → hosted → clear
+  error). Fail-closed `allow_network` opt-in applies to all LLM calls including
+  localhost Ollama; the single HTTP seam is mocked, so 22 new tests are fully
+  hermetic. Full suite 75 tests green. Stdlib-only. Next: wire the LLM into
+  enrichment/scoring (M2).
