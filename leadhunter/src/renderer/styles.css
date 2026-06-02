@@ -128,6 +128,7 @@ button:disabled { opacity: 0.6; cursor: progress; }
 .progress-item.phase-business-found { color: var(--text); border-left-color: var(--accent); }
 .progress-item.phase-enriching { color: var(--text); border-left-color: var(--warn); }
 .progress-item.phase-done { color: var(--good); border-left-color: var(--good); }
+.progress-item.phase-blocked,
 .progress-item.phase-error { color: #ff7a7a; border-left-color: #ff7a7a; }
 
 table {

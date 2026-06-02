@@ -30,6 +30,7 @@ const PHASE_ICON = {
   enriching: '✉️',
   persisted: '💾',
   done: '✅',
+  blocked: '🚫',
   error: '⚠️',
 };
 

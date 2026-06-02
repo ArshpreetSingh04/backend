@@ -20,6 +20,37 @@ function hostOf(url) {
   }
 }
 
+// --- anti-bot / challenge-page detection -----------------------------------
+// Recognise the screens search engines show automated browsers (e.g. DuckDuckGo
+// redirects to /static-pages/418.html) so we emit a precise diagnostic instead
+// of a silent selector timeout.
+const BLOCK_URL_RE = /static-pages\/4\d\d|\/sorry\b|\/challenge|\/captcha|unusual[-_]?traffic/i;
+const BLOCK_TEXT_MARKERS = [
+  'unusual traffic',
+  'our systems have detected',
+  'are you a robot',
+  'verify you are human',
+  'verify you’re human',
+  'automated queries',
+  'detected unusual',
+  'access denied',
+  'please complete the captcha',
+];
+
+/** Inspect the current page for signs it's a block/challenge screen. */
+async function detectBlock(page) {
+  const url = page.url();
+  if (BLOCK_URL_RE.test(url)) return { blocked: true, reason: `challenge/error URL (${url})`, url };
+  let title = '';
+  let text = '';
+  try { title = (await page.title()) || ''; } catch { /* ignore */ }
+  try { text = (await page.locator('body').innerText().catch(() => '')).slice(0, 2000); } catch { /* ignore */ }
+  const hay = `${title}\n${text}`.toLowerCase();
+  const marker = BLOCK_TEXT_MARKERS.find((m) => hay.includes(m));
+  if (marker) return { blocked: true, reason: `block marker "${marker}"`, url };
+  return { blocked: false, url };
+}
+
 function normalizeDomain(value) {
   if (!value) return '';
   const s = String(value).trim();
@@ -68,9 +99,39 @@ async function discover({ hb, provider, profile, maxResults = 5, log = () => {},
     || [profile.niche || profile.vertical, profile.location].filter(Boolean).join(' ')).trim();
   log(`web-search query: "${query}" via ${provider.name}`);
 
+  // Fail with a clear, specific reason instead of a silent selector timeout.
+  const reportBlock = (b) => {
+    const msg =
+      `Search provider "${provider.name}" served an anti-bot block/challenge page — ${b.reason}. ` +
+      `Real-browser discovery was screened, so no leads were found. ` +
+      `Try a headed browser (LEADHUNTER_HEADFUL=1 under xvfb) or an alternate provider (LEADHUNTER_PROVIDER=bing).`;
+    progress('blocked', msg, { provider: provider.name, url: b.url });
+    log(`BLOCKED: ${b.reason}`);
+    throw new Error(msg);
+  };
+  const waitForOrDiagnose = async (selector, timeout, label) => {
+    try {
+      await page.waitForSelector(selector, { timeout });
+    } catch {
+      const b = await detectBlock(page);
+      if (b.blocked) reportBlock(b);
+      const msg =
+        `Timed out (${timeout}ms) waiting for ${label} on "${provider.name}" (selector: ${selector}). ` +
+        `Current page: ${page.url()} — the real browser was likely screened, or the provider selectors are stale.`;
+      progress('error', msg, { provider: provider.name, url: page.url() });
+      log(msg);
+      throw new Error(msg);
+    }
+  };
+
   // Open the search engine and type the query like a person.
   await hb.goto(provider.homeUrl);
-  await page.waitForSelector(provider.searchBox, { timeout: 15000 });
+
+  // Anti-bot screens often hit immediately (e.g. DDG redirects to static-pages/418).
+  const preBlock = await detectBlock(page);
+  if (preBlock.blocked) reportBlock(preBlock);
+
+  await waitForOrDiagnose(provider.searchBox, 15000, 'the search box');
   const box = page.locator(provider.searchBox).first();
   await hb.type(box, query);
 
@@ -80,7 +141,7 @@ async function discover({ hb, provider, profile, maxResults = 5, log = () => {},
     await hb.click(page.locator(provider.submit).first());
   }
 
-  await page.waitForSelector(provider.resultsReady, { timeout: 20000 });
+  await waitForOrDiagnose(provider.resultsReady, 20000, 'organic results');
   await hb.scroll(2);
 
   const total = await page.locator(provider.resultLink).count();

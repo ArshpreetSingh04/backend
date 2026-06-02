@@ -18,8 +18,30 @@ const DUCKDUCKGO = {
   resultsReady: '[data-testid="result"], li.result, #links .result',
   resultLink: '[data-testid="result-title-a"], a.result__a',
   extract: { name: ['h1', 'title'], website: [] }, // website falls back to URL host
-  note: 'Selectors best-effort; unverified here (open-web egress blocked).',
+  note: 'DDG aggressively screens automated browsers (redirects to static-pages/418). '
+    + 'The adapter now detects that and reports it; try LEADHUNTER_PROVIDER=bing or headed mode.',
 };
+
+// Alternate, often more bot-tolerant provider. Still REAL human-like navigation
+// in a browser (never raw HTTP). Selectors are best-effort and unverified here
+// because open-web egress is blocked in this environment.
+const BING = {
+  name: 'bing',
+  homeUrl: 'https://www.bing.com/',
+  searchBox: 'textarea[name="q"], input[name="q"], #sb_form_q',
+  submit: 'enter',
+  resultsReady: '#b_results .b_algo, li.b_algo',
+  resultLink: '#b_results .b_algo h2 a, li.b_algo h2 a',
+  extract: { name: ['h1', 'title'], website: [] },
+  note: 'Alternate provider; unverified offline.',
+};
+
+const PROVIDERS = { duckduckgo: DUCKDUCKGO, bing: BING };
+
+/** Resolve a provider config by name (case-insensitive); undefined if unknown. */
+function getProvider(name) {
+  return name ? PROVIDERS[String(name).trim().toLowerCase()] : undefined;
+}
 
 /**
  * Build a provider pointing at the local verification fixture.
@@ -38,4 +60,4 @@ function makeFixtureProvider(baseUrl) {
   };
 }
 
-module.exports = { DUCKDUCKGO, makeFixtureProvider };
+module.exports = { DUCKDUCKGO, BING, PROVIDERS, getProvider, makeFixtureProvider };

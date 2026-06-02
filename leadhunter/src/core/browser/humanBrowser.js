@@ -14,6 +14,8 @@
 
 const { chromium } = require('playwright');
 
+// Fallback UA only; launch() overrides this with one that matches the ACTUAL
+// browser version (a mismatched UA is a strong bot-detection tell).
 const USER_AGENT =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -27,18 +29,35 @@ class HumanBrowser {
     this.browser = null;
     this.context = null;
     this.page = null;
+    this.userAgent = USER_AGENT;
   }
 
   async launch() {
     this.browser = await chromium.launch({
       headless: this.headless,
-      // --no-sandbox is needed in many CI/containers (Chromium setuid sandbox).
-      args: ['--no-sandbox', '--disable-dev-shm-usage'],
+      args: [
+        '--no-sandbox', // Chromium setuid sandbox in containers
+        '--disable-dev-shm-usage',
+        // Drop the navigator.webdriver automation tell at the browser level
+        // (a launch flag — no JS injection, stays within human-like operation).
+        '--disable-blink-features=AutomationControlled',
+      ],
     });
+
+    // Align the User-Agent with the real browser version we just launched.
+    const major = (this.browser.version() || '').split('.')[0] || '124';
+    this.userAgent =
+      `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) ` +
+      `Chrome/${major}.0.0.0 Safari/537.36`;
+    this.log(`browser ${this.browser.version()} (headless=${this.headless}) — UA Chrome/${major}`);
+
     this.context = await this.browser.newContext({
-      userAgent: USER_AGENT,
+      userAgent: this.userAgent,
       viewport: { width: 1280, height: 800 },
       locale: 'en-US',
+      timezoneId: 'America/Chicago',
+      // Realistic request context a normal desktop browser would send.
+      extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
     });
     this.page = await this.context.newPage();
     return this.page;

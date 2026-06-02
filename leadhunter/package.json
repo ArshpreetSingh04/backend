@@ -13,7 +13,8 @@
     "smoke": "node test/smoke.js",
     "test:parser": "node test/parser.test.js",
     "test:engine": "node test/engine.test.js",
-    "verify:real": "node test/verify-real.js"
+    "verify:real": "node test/verify-real.js",
+    "verify:antibot": "node test/verify-antibot.js"
   },
   "devDependencies": {
     "electron": "^42.3.0"

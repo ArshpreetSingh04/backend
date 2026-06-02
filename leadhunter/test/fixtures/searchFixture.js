@@ -91,6 +91,16 @@ function bizPage(id) {
   </body></html>`;
 }
 
+// An anti-bot block/challenge screen, mimicking what DuckDuckGo serves to
+// automated browsers (it redirects to /static-pages/418.html).
+function blockPage() {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>DuckDuckGo</title></head>
+  <body>
+    <h1>If this error persists, please let us know.</h1>
+    <p>Our systems have detected unusual traffic from your computer network. Please try again later.</p>
+  </body></html>`;
+}
+
 function contactPage(id) {
   const b = BUSINESSES.find((x) => x.id === id);
   if (!b) return null;
@@ -106,12 +116,30 @@ function contactPage(id) {
 
 /**
  * Start the fixture on an ephemeral port.
- * @returns {Promise<{url:string, port:number, close:()=>Promise<void>}>}
+ * @param {{block?:boolean}} [opts]  block:true serves an anti-bot screen instead
+ *        (homepage 302 → /static-pages/418.html), to exercise block detection.
+ * @returns {Promise<{url:string, port:number, headers:object, close:()=>Promise<void>}>}
+ *        `headers` captures the User-Agent / Accept-Language of the last request.
  */
-function startFixture() {
+function startFixture(opts = {}) {
+  const blockMode = !!opts.block;
+  const headers = { userAgent: null, acceptLanguage: null, count: 0 };
+
   const server = http.createServer((req, res) => {
+    headers.userAgent = req.headers['user-agent'] || null;
+    headers.acceptLanguage = req.headers['accept-language'] || null;
+    headers.count += 1;
     const u = new URL(req.url, 'http://127.0.0.1');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+
+    if (blockMode) {
+      if (u.pathname === '/') {
+        res.statusCode = 302;
+        res.setHeader('Location', '/static-pages/418.html');
+        return res.end();
+      }
+      if (u.pathname.startsWith('/static-pages/')) return res.end(blockPage());
+    }
 
     if (u.pathname === '/') return res.end(homePage());
     if (u.pathname === '/search') return res.end(resultsPage(u.searchParams.get('q') || ''));
@@ -137,6 +165,7 @@ function startFixture() {
       resolve({
         url: `http://127.0.0.1:${port}`,
         port,
+        headers, // captured User-Agent / Accept-Language of the last request
         close: () => new Promise((r) => server.close(r)),
       });
     });

@@ -1,6 +1,35 @@
 # LeadHunter — PROGRESS
 
-_Updated 2026-06-02. Work Order #6 — desktop app wired to the real engine + live progress._
+_Updated 2026-06-02. Work Order #7 — anti-bot hardening + block diagnostics._
+
+## ✅ Done — Work Order #7 (real discovery: anti-detection + clear block diagnostics)
+Grounded in a real live run (Arsh provisioned Chromium and ran `--real` against
+the open web): the human-like browser now launches & navigates, but DuckDuckGo
+served an anti-bot page (redirect to `static-pages/418.html`) and discovery died
+on a silent 20s selector timeout. This increment makes humaning less detectable
+and turns silent failures into precise diagnostics. **No raw HTTP/fetch** — all
+discovery stays real-browser human-like.
+- **UA aligned with the REAL browser** (`humanBrowser.js`): the User-Agent is now
+  derived from `browser.version()` (was a hardcoded `Chrome/124` while the binary
+  is Chromium 141 — a detection tell). Verified: outgoing UA = `Chrome/141`.
+- **Automation signal stripped** at launch via `--disable-blink-features=AutomationControlled`
+  (a launch flag — no JS injection), plus realistic context: `Accept-Language`,
+  `locale`, `timezoneId`.
+- **Block/challenge detection** (`webSearchAdapter.js`): after navigation (and on
+  any selector timeout) the adapter checks for challenge URLs
+  (`static-pages/4xx`, `/sorry`, `/captcha`, …) and "unusual traffic"-style text,
+  then **fails fast** with a specific message AND a **`blocked` progress event** —
+  instead of a silent 20s timeout. Plain timeouts now also report the current URL.
+- **Alternate provider + headed mode** (opt-in, still real-browser):
+  `LEADHUNTER_PROVIDER=bing` (new Bing provider config) and `LEADHUNTER_HEADFUL=1`
+  (full headed Chromium under xvfb) as levers to get past screening.
+- **Verified OFFLINE** (egress is blocked in this sandbox, so live DDG is
+  unreachable here): new `npm run verify:antibot` proves (1) the UA matches the
+  real Chromium major + Accept-Language is sent, and (2) a blocking fixture
+  (302 → `/static-pages/418.html`) triggers the diagnostic + `blocked` event in
+  **~0.8s** (not a 20s hang). `verify:real`, `smoke`, `test:engine`, `test:parser`
+  all still pass. (Live `--real` here fails cleanly at navigation with a clear
+  message, confirming graceful failure.)
 
 ## ✅ Done — Work Order #6 (mock/real toggle + live progress)
 - **Mock/real toggle** in the desktop UI ("Use real research engine") next to the
@@ -153,11 +182,14 @@ _Updated 2026-06-02. Work Order #6 — desktop app wired to the real engine + li
   under `xvfb-run` and rendering leads (screenshot captured).
 
 ## ▶️ Next step
-1. **Graceful "real browser runtime unavailable" handling** (robustness): if the
-   real engine can't launch Chromium (no browser binary in the environment), fail
-   with a clear message + surface it in the UI/CLI — **without** bypassing the
-   human-like browser principle. Decision needed from Arsh on runtime provisioning
-   (see `[needs-key:browser-runtime]`). Do NOT add raw-HTTP/fetch scraping.
+1. **Live-validate against the open web** (needs egress + a provisioned Chromium):
+   run `--real` and confirm whether UA-alignment + the automation-flag strip clear
+   DDG's screen; if not, try `LEADHUNTER_PROVIDER=bing` and/or
+   `LEADHUNTER_HEADFUL=1` (headed under xvfb). Tune live selectors from a real run.
+   `[needs-key:network-egress]`
+2. **Graceful "real browser runtime unavailable" handling** (robustness): if the
+   real engine can't launch Chromium (no browser binary), fail with a clear
+   message — **without** bypassing humaning. `[needs-key:browser-runtime]`
 2. **Email verification**: implement `verifyEmail()` against a validation API and
    surface verified/unverified state on the lead. `[needs-key:enrich]`
 3. **Verify against the live open web** once egress is allowlisted; tune live
@@ -184,9 +216,11 @@ _Updated 2026-06-02. Work Order #6 — desktop app wired to the real engine + li
 ## 🟡 Open decisions
 - **Engine runtime:** ✅ DECIDED — out-of-process **Playwright/Chromium** (was the
   WO#1 open question). Gives stealth/proxy control and clean process isolation.
-- **Live search provider:** which engine for the live path (DuckDuckGo vs. Bing
-  vs. Google)? DuckDuckGo configured as default; selectors unverified until egress
-  is open.
+- **Live search provider:** DuckDuckGo is the default but **aggressively screens
+  automated browsers** (serves `static-pages/418`). Bing is now available as an
+  alternate (`LEADHUNTER_PROVIDER=bing`); headed-under-xvfb is another lever
+  (`LEADHUNTER_HEADFUL=1`). Open question (needs a live run): which provider +
+  mode reliably clears screening while staying human-like.
 - **Browser-build provisioning:** pinned `playwright@1.56.1` to match the
   pre-provisioned browser at `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`. On a
   normal machine, `npx playwright install chromium` instead. Revisit when CI/host
@@ -202,9 +236,11 @@ _Updated 2026-06-02. Work Order #6 — desktop app wired to the real engine + li
 - **`node:sqlite` is experimental** — fine for now; reassess if we hit limits.
 
 ## 🔑 [needs-key:*] — stubbed/blocked, not blocking the build
-- `[needs-key:network-egress]` — **NEW.** This session's network allowlist blocks
-  open-web egress, so the live web-search path can't be verified here. Real engine
-  proven via local fixture; works against the live web once egress is allowed.
+- `[needs-key:network-egress]` — This session's network allowlist blocks open-web
+  egress (live `--real` fails at navigation with `ERR_CERT_AUTHORITY_INVALID`), so
+  the live web-search path can't be verified here. Real engine + anti-bot
+  diagnostics proven via local fixtures; live discovery needs egress + a real run
+  to confirm the screening is cleared.
 - `[needs-key:enrich]` — **narrowed.** On-site email/phone *extraction* is now
   REAL (enrichmentAdapter). Only 3rd-party *verification* (deliverability/MX) still
   needs a key — `verifyEmail()` is stubbed.
