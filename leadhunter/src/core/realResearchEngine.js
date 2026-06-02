@@ -33,6 +33,16 @@ class RealResearchEngine {
     this.maxResults = opts.maxResults || 5;
     this.log = opts.log || ((m) => console.log(`[real] ${m}`));
     this.progress = opts.progress || (() => {});
+    // Injection seam for the browser driver. Production leaves this null and
+    // gets the real HumanBrowser+Chromium; only tests inject a no-Chromium
+    // double (and only when no real browser is available). Never used by `--real`.
+    this.browserFactory = typeof opts.browserFactory === 'function' ? opts.browserFactory : null;
+  }
+
+  /** Build the browser driver — real HumanBrowser unless a factory is injected. */
+  makeBrowser() {
+    const opts = { headless: this.headless, log: this.log };
+    return this.browserFactory ? this.browserFactory(opts) : new HumanBrowser(opts);
   }
 
   async plan(prompt) {
@@ -62,7 +72,7 @@ class RealResearchEngine {
     const plan = await this.plan(prompt);
     const limit = opts.limit || this.maxResults;
 
-    const hb = new HumanBrowser({ headless: this.headless, log: this.log });
+    const hb = this.makeBrowser();
     let leads = [];
     try {
       await hb.launch();

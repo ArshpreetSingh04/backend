@@ -1,6 +1,39 @@
 # LeadHunter — PROGRESS
 
-_Updated 2026-06-02. Work Order #8 — filter ads/aggregators + launch portability._
+_Updated 2026-06-02. Work Order #9 — offline verifiability with no Chromium._
+
+## ✅ Done — Work Order #9 (no-Chromium fixture driver restores offline proofs)
+Grounded in a fresh clean-sandbox run of this branch: `npm install` is clean, but
+**a Chromium binary cannot be provisioned** — `npx playwright install chromium`
+hangs at "0% of 175.9 MiB" because the Playwright CDN is **blocked by the egress
+allowlist**. So in a clean sandbox `--real`, `verify:real`, `verify:filter`,
+`verify:antibot` all died at `browserType.launch` (even `verify:real`, which only
+targets the local 127.0.0.1 fixture — the HTTP server starts fine; the *browser*
+launch is what fails). Only mock (`smoke`, `test:parser`) ran. The WO#8 launch fix
+doesn't rescue a clean checkout (nothing to point `executablePath` at). This left
+the "demonstrable without keys/browser" methodology **blind** to the real engine.
+- **Injectable browser-driver seam** (`realResearchEngine.js`): `findLeads()` now
+  builds its driver via `makeBrowser()`, which uses an injected `browserFactory`
+  if provided, else the real `HumanBrowser`. Threaded through the pipeline.
+  **Production is untouched** — `--real` (CLI/app) never injects, so it always
+  gets real `HumanBrowser`+Chromium.
+- **Test-only no-Chromium driver** (`test/fixtures/fixtureDriver.js`): implements
+  the exact surface the adapters use (`goto/type/pressEnter/click/scroll/settle/
+  back` + `page.locator/getByRole/url/title/waitForSelector` + locator
+  `first/nth/count/innerText/getAttribute`), backed by the existing search
+  fixture's **real HTML** parsed with `node-html-parser` (dev dep). The REAL
+  discover → ad/aggregator filter → qualify → enrich → dedupe code runs
+  **unchanged** against it. It is **never** wired into `--real` and is **not** a
+  raw-HTTP discovery path — it only loads our own 127.0.0.1 fixture.
+- **Auto-detect**: `verify:real` / `verify:filter` use real Chromium when a binary
+  is present, else fall back to the fixture driver (`chromiumAvailable()`).
+  `verify:antibot` (which tests the *real browser's* UA/fingerprint) **skips
+  cleanly** when no Chromium is present.
+- **Verified BOTH ways:** with no Chromium (`PLAYWRIGHT_BROWSERS_PATH` → empty),
+  `verify:real` returns the 8 real leads with enrichment (b1 76→100; b2 partial
+  80) and `verify:filter` drops all 4 ad/aggregator results and keeps 8 real
+  businesses — `smoke`, `test:parser`, `test:engine`, `verify:antibot` (skip) all
+  green. With Chromium present, the real-browser path still passes unchanged.
 
 ## ✅ Done — Work Order #8 (real leads, not ads/directories + full-Chromium launch)
 Grounded in a real live run (Arsh provisioned the full Chromium build and ran
@@ -219,7 +252,7 @@ discovery stays real-browser human-like.
    `--real` against live DDG/Bing and confirm the ad/aggregator filter yields real
    business homepages; tune the denylist + result selectors from the real SERP.
    Optionally follow a directory result to extract underlying business domains
-   (only if it stays small). `[needs-key:network-egress]`
+   (only if it stays small). `[needs-key:network-egress]` `[needs-key:browser-runtime]`
 2. **Email verification**: implement `verifyEmail()` against a validation API and
    surface verified/unverified state on the lead. `[needs-key:enrich]`
 3. **More source adapters**: Maps/Places `[needs-key:maps]`, business directories.
@@ -267,6 +300,10 @@ discovery stays real-browser human-like.
 - **Dedupe strength:** now email → phone → website-domain → name+business; may
   still want fuzzy business-name matching.
 - **`node:sqlite` is experimental** — fine for now; reassess if we hit limits.
+- **Test-only browser double:** `fixtureDriver` (+ `node-html-parser` dev dep) is
+  the offline substitute for the real browser in verify scripts. It must never
+  leak into production (`browserFactory` is only injected by tests). Keep its
+  surface in lock-step with what the adapters consume from HumanBrowser/Page.
 
 ## 🔑 [needs-key:*] — stubbed/blocked, not blocking the build
 - `[needs-key:network-egress]` — This session's network allowlist blocks open-web
@@ -281,12 +318,15 @@ discovery stays real-browser human-like.
 - `[needs-key:llm]` — LLM planner + per-lead hook generation. **Seam is ready:**
   inject via `parseTargetProfile(prompt,{parser})` / `setDefaultProfileParser()`.
 - `[needs-key:native-host]` — native-messaging host for desktop ↔ extension.
-- `[needs-key:browser-runtime]` — **partly addressed (WO#8).** Real mode now
-  prefers the **full Chromium build** (`chromium.executablePath()`, override via
-  `LEADHUNTER_CHROMIUM_PATH`) instead of the often-missing `chromium_headless_shell`,
-  and **fails gracefully** with a clear "real browser runtime unavailable" message
-  (never raw HTTP). Remaining open question: how to provision/auto-install a
-  Chromium binary in restricted environments where the Playwright CDN is blocked.
+- `[needs-key:browser-runtime]` — **a clean sandbox cannot provision Chromium**:
+  `npx playwright install chromium` is blocked by the egress allowlist (Playwright
+  CDN), so **live browser proofs (`--real`, real-Chromium verify runs) cannot run
+  here at all**. WO#8 prefers the full Chromium build + fails gracefully, but that
+  only helps when a binary already exists. **Offline substitute (WO#9):** the
+  test-only `fixtureDriver` runs the real engine's selection/extraction/enrich/
+  dedupe logic against real fixture HTML with no Chromium. Still open for Arsh:
+  how to provision a Chromium binary in restricted target environments (vendored
+  binary? allowlist the CDN? system Chrome via `LEADHUNTER_CHROMIUM_PATH`?).
 
 _`[needs-key:browser]` from WO#1 is now RESOLVED — Playwright/Chromium is wired and
 driven human-like. Everything still runs with no API keys or logins._

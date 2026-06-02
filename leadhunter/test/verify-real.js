@@ -23,8 +23,15 @@ const { startFixture } = require('./fixtures/searchFixture');
 const { makeFixtureProvider } = require('../src/core/adapters/providers');
 const { RealResearchEngine } = require('../src/core/realResearchEngine');
 const { runLeadHunt } = require('../src/core/pipeline');
+const { FixtureDriver, chromiumAvailable } = require('./fixtures/fixtureDriver');
 
 const PROMPT = 'find 50 dentists in Austin with email and phone';
+
+// Use the real Chromium-backed engine when a browser is present; otherwise fall
+// back to the test-only fixture driver so the REAL engine code paths still run
+// in sandboxes that can't provision a Chromium binary. (Production never does this.)
+const REAL_BROWSER = chromiumAvailable();
+const browserFactory = REAL_BROWSER ? undefined : (o) => new FixtureDriver(o);
 
 async function run() {
   const fixture = await startFixture();
@@ -33,6 +40,7 @@ async function run() {
   const csvPath = path.join(dataDir, 'leads.csv');
 
   console.log(`Fixture search engine: ${fixture.url}`);
+  console.log(`Driver: ${REAL_BROWSER ? 'real Chromium (HumanBrowser)' : 'no-Chromium fixture driver (test double)'}`);
   console.log(`Prompt: "${PROMPT}"\n`);
 
   try {
@@ -61,6 +69,7 @@ async function run() {
       provider: makeFixtureProvider(fixture.url),
       headless: true,
       maxResults: 5,
+      browserFactory,
       dataDir,
       dbPath,
       csvPath,

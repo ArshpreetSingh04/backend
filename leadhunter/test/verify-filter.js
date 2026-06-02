@@ -15,6 +15,11 @@ const { startFixture, JUNK, BUSINESSES, rank } = require('./fixtures/searchFixtu
 const { makeFixtureProvider } = require('../src/core/adapters/providers');
 const { isAdLink, isExcludedDomain } = require('../src/core/adapters/webSearchAdapter');
 const { RealResearchEngine } = require('../src/core/realResearchEngine');
+const { FixtureDriver, chromiumAvailable } = require('./fixtures/fixtureDriver');
+
+// Real Chromium when present; otherwise the no-Chromium fixture driver double.
+const REAL_BROWSER = chromiumAvailable();
+const browserFactory = REAL_BROWSER ? undefined : (o) => new FixtureDriver(o);
 
 const PROMPT = 'find 20 dentists in Austin with email and phone';
 const QUERY = 'dentists Austin';
@@ -44,7 +49,8 @@ async function run() {
     console.log(`  [${tag.padEnd(10)}] ${r.name}  →  ${target}`);
   }
 
-  const engine = new RealResearchEngine({ provider: makeFixtureProvider(fx.url), headless: true });
+  console.log(`\nDriver: ${REAL_BROWSER ? 'real Chromium (HumanBrowser)' : 'no-Chromium fixture driver (test double)'}`);
+  const engine = new RealResearchEngine({ provider: makeFixtureProvider(fx.url), headless: true, browserFactory });
   let leads;
   try {
     leads = await engine.findLeads(PROMPT, { limit: 20 });

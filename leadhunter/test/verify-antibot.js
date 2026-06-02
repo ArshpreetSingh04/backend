@@ -19,8 +19,17 @@ const { startFixture } = require('./fixtures/searchFixture');
 const { makeFixtureProvider } = require('../src/core/adapters/providers');
 const { HumanBrowser } = require('../src/core/browser/humanBrowser');
 const { RealResearchEngine } = require('../src/core/realResearchEngine');
+const { chromiumAvailable } = require('./fixtures/fixtureDriver');
 
 async function run() {
+  // Anti-bot hardening is about the REAL browser's outgoing fingerprint (UA,
+  // headers) and challenge-page behaviour — it can only be tested with a real
+  // Chromium. In sandboxes without one, skip cleanly (green) instead of failing;
+  // discover/filter/enrich logic is covered no-Chromium by verify:real/filter.
+  if (!chromiumAvailable()) {
+    console.log('⏭  verify:antibot SKIPPED — no Chromium present (anti-bot checks need a real browser).');
+    return;
+  }
   // (1) UA alignment + Accept-Language actually applied to real requests.
   const fx = await startFixture();
   const hb = new HumanBrowser({ headless: true });

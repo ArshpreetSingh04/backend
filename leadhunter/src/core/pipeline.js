@@ -58,6 +58,7 @@ async function runLeadHunt(prompt, opts = {}) {
     headless: opts.headless,
     maxResults: opts.maxResults,
     log: opts.log,
+    browserFactory: opts.browserFactory, // test-only injection; null in production
   });
 
   progress(PHASES.PARSING, `Parsing prompt with the ${mode} engine…`, { prompt, mode });
