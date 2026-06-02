@@ -14,7 +14,8 @@
     "test:parser": "node test/parser.test.js",
     "test:engine": "node test/engine.test.js",
     "verify:real": "node test/verify-real.js",
-    "verify:antibot": "node test/verify-antibot.js"
+    "verify:antibot": "node test/verify-antibot.js",
+    "verify:filter": "node test/verify-filter.js"
   },
   "devDependencies": {
     "electron": "^42.3.0"

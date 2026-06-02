@@ -13,6 +13,10 @@
  *
  * The browser really navigates, types, clicks and scrolls against this; the
  * extracted names/domains are read from really-served HTML — not fabricated.
+ *
+ * `startFixture({ withJunk: true })` mixes in an ad-redirect result + a few
+ * directory/aggregator results (Yelp/Zocdoc/Opencare) above the real businesses,
+ * mirroring a live SERP, so ad/aggregator filtering can be verified offline.
  */
 
 const http = require('node:http');
@@ -33,6 +37,22 @@ const BUSINESSES = [
   { id: 'd1', name: 'Dallas Dental Group', domain: 'dallasdental.example.com', niche: 'dentist dental', city: 'Dallas', email: 'contact@dallasdental.example.com', phone: '+1-214-555-0108' },
 ];
 
+// Junk results a live SERP mixes in above the real businesses: a sponsored ad
+// (DDG-style /y.js redirect) and directory/aggregator pages. Verbatim-ish from a
+// real "dentists in Austin" run. These must be filtered OUT by discovery.
+const JUNK = [
+  {
+    id: 'ad1',
+    kind: 'ad',
+    name: 'Saints Dental Austin — Book Today',
+    adHref: 'https://duckduckgo.com/y.js?ad_domain=saintsdental.example.com&ad_provider=bingv7aa&u3=https%3A%2F%2Fsaintsdental.example.com',
+    niche: 'dentist dental', city: 'Austin',
+  },
+  { id: 'agg1', kind: 'aggregator', name: 'THE BEST 10 DENTISTS IN AUSTIN, TX - Yelp', domain: 'yelp.com', niche: 'dentist dental', city: 'Austin' },
+  { id: 'agg2', kind: 'aggregator', name: 'Best Dentists Near Me in Austin, TX | Zocdoc', domain: 'zocdoc.com', niche: 'dentist dental', city: 'Austin' },
+  { id: 'agg3', kind: 'aggregator', name: '20 Best Dentists Near Me | Opencare.com', domain: 'opencare.com', niche: 'dentist dental', city: 'Austin' },
+];
+
 function esc(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
@@ -41,9 +61,10 @@ function stem(t) {
   return t.replace(/(ies)$/, 'y').replace(/s$/, '');
 }
 
-function rank(query) {
+/** Rank a given dataset against the query (stable; preserves dataset order on ties). */
+function rank(dataset, query) {
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean).map(stem);
-  return BUSINESSES
+  return dataset
     .map((b) => {
       const hay = `${b.name} ${b.niche} ${b.city}`.toLowerCase();
       const score = tokens.reduce((acc, t) => acc + (t && hay.includes(t) ? 1 : 0), 0);
@@ -63,15 +84,19 @@ function homePage() {
   </form></body></html>`;
 }
 
-function resultsPage(q) {
-  const hits = rank(q);
+function resultsPage(dataset, q) {
+  const hits = rank(dataset, q);
   const items = hits
-    .map(
-      (b) => `<div class="result">
-        <a class="result-link" href="/biz/${b.id}">${esc(b.name)}</a>
-        <span class="result-url">${esc(b.domain)}</span>
-      </div>`,
-    )
+    .map((b) => {
+      // Ad results link through a tracking redirect (no /biz page); organic
+      // results link to the business "site".
+      const href = b.kind === 'ad' ? b.adHref : `/biz/${b.id}`;
+      const shown = b.kind === 'ad' ? 'Ad · sponsored' : (b.domain || '');
+      return `<div class="result">
+        <a class="result-link" href="${esc(href)}">${esc(b.name)}</a>
+        <span class="result-url">${esc(shown)}</span>
+      </div>`;
+    })
     .join('\n');
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(q)} — FixtureSearch</title></head>
   <body><h1>Results for "${esc(q)}"</h1>
@@ -79,8 +104,8 @@ function resultsPage(q) {
   </body></html>`;
 }
 
-function bizPage(id) {
-  const b = BUSINESSES.find((x) => x.id === id);
+function bizPage(dataset, id) {
+  const b = dataset.find((x) => x.id === id);
   if (!b) return null;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(b.name)}</title></head>
   <body>
@@ -101,8 +126,8 @@ function blockPage() {
   </body></html>`;
 }
 
-function contactPage(id) {
-  const b = BUSINESSES.find((x) => x.id === id);
+function contactPage(dataset, id) {
+  const b = dataset.find((x) => x.id === id);
   if (!b) return null;
   const email = b.email ? `<p>Email: <a class="email" href="mailto:${esc(b.email)}">${esc(b.email)}</a></p>` : '';
   const phone = b.phone ? `<p>Call: <a class="phone" href="tel:${esc(b.phone)}">${esc(b.phone)}</a></p>` : '';
@@ -116,13 +141,16 @@ function contactPage(id) {
 
 /**
  * Start the fixture on an ephemeral port.
- * @param {{block?:boolean}} [opts]  block:true serves an anti-bot screen instead
- *        (homepage 302 → /static-pages/418.html), to exercise block detection.
- * @returns {Promise<{url:string, port:number, headers:object, close:()=>Promise<void>}>}
+ * @param {{block?:boolean, withJunk?:boolean}} [opts]
+ *   block:true serves an anti-bot screen (homepage 302 → /static-pages/418.html).
+ *   withJunk:true mixes ad + aggregator results above the real businesses.
+ * @returns {Promise<{url:string, port:number, headers:object, dataset:object[], close:()=>Promise<void>}>}
  *        `headers` captures the User-Agent / Accept-Language of the last request.
  */
 function startFixture(opts = {}) {
   const blockMode = !!opts.block;
+  // Junk first, so it ranks at the top of the SERP (as on a real engine).
+  const dataset = opts.withJunk ? [...JUNK, ...BUSINESSES] : BUSINESSES;
   const headers = { userAgent: null, acceptLanguage: null, count: 0 };
 
   const server = http.createServer((req, res) => {
@@ -142,15 +170,15 @@ function startFixture(opts = {}) {
     }
 
     if (u.pathname === '/') return res.end(homePage());
-    if (u.pathname === '/search') return res.end(resultsPage(u.searchParams.get('q') || ''));
+    if (u.pathname === '/search') return res.end(resultsPage(dataset, u.searchParams.get('q') || ''));
     if (u.pathname.startsWith('/biz/')) {
-      const body = bizPage(u.pathname.slice('/biz/'.length));
+      const body = bizPage(dataset, u.pathname.slice('/biz/'.length));
       if (body) return res.end(body);
       res.statusCode = 404;
       return res.end('<h1>404</h1>');
     }
     if (u.pathname.startsWith('/contact/')) {
-      const body = contactPage(u.pathname.slice('/contact/'.length));
+      const body = contactPage(dataset, u.pathname.slice('/contact/'.length));
       if (body) return res.end(body);
       res.statusCode = 404;
       return res.end('<h1>404</h1>');
@@ -166,10 +194,11 @@ function startFixture(opts = {}) {
         url: `http://127.0.0.1:${port}`,
         port,
         headers, // captured User-Agent / Accept-Language of the last request
+        dataset, // the ranked-able dataset this instance serves
         close: () => new Promise((r) => server.close(r)),
       });
     });
   });
 }
 
-module.exports = { startFixture, BUSINESSES };
+module.exports = { startFixture, BUSINESSES, JUNK, rank };

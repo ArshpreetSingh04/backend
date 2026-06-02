@@ -20,6 +20,42 @@ function hostOf(url) {
   }
 }
 
+// --- ad / aggregator filtering ---------------------------------------------
+// Real-mode discovery must yield actual individual business sites, not ad
+// redirects or directory/aggregator pages. This is smarter *reading* of the
+// real SERP (still human-like; never raw HTTP).
+
+// Ad / tracking redirect links (DDG → /y.js, Bing → /aclick, Google → /aclk).
+const AD_LINK_RE = /\/y\.js\b|\/aclick\b|\/aclk\b|[?&]ad_(domain|provider)=|googleadservices/i;
+
+// Search engines themselves (ad links resolve back here) + well-known
+// directories / aggregators / review sites / socials / listicle publishers that
+// are not an individual business homepage.
+const EXCLUDED_DOMAINS = new Set([
+  'duckduckgo.com', 'bing.com', 'google.com',
+  'yelp.com', 'zocdoc.com', 'opencare.com', 'yellowpages.com', 'healthgrades.com',
+  'mapquest.com', 'tripadvisor.com', 'angi.com', 'angieslist.com', 'thumbtack.com',
+  'bbb.org', 'nextdoor.com', 'glassdoor.com', 'indeed.com',
+  'facebook.com', 'instagram.com', 'linkedin.com', 'twitter.com', 'x.com',
+  'pinterest.com', 'youtube.com', 'reddit.com', 'wikipedia.org',
+  'nytimes.com', 'forbes.com', 'usnews.com', 'statesman.com', 'yahoo.com',
+]);
+
+/** Reduce a host to its registrable-ish root (last two labels). */
+function rootDomain(hostOrDomain) {
+  const h = String(hostOrDomain || '').toLowerCase().replace(/^www\./, '').replace(/\/.*$/, '');
+  const parts = h.split('.').filter(Boolean);
+  return parts.length <= 2 ? h : parts.slice(-2).join('.');
+}
+
+function isAdLink(href) {
+  return !!href && AD_LINK_RE.test(href);
+}
+
+function isExcludedDomain(hostOrDomain) {
+  return EXCLUDED_DOMAINS.has(rootDomain(hostOrDomain));
+}
+
 // --- anti-bot / challenge-page detection -----------------------------------
 // Recognise the screens search engines show automated browsers (e.g. DuckDuckGo
 // redirects to /static-pages/418.html) so we emit a precise diagnostic instead
@@ -145,14 +181,25 @@ async function discover({ hb, provider, profile, maxResults = 5, log = () => {},
   await hb.scroll(2);
 
   const total = await page.locator(provider.resultLink).count();
-  const n = Math.min(total, maxResults);
-  log(`organic results: ${total}; opening top ${n}`);
+  // Scan organic results, skipping ads + directories, until we have enough REAL
+  // businesses (bounded so we never trawl the whole page).
+  const maxScan = Math.min(total, maxResults * 4 + 10);
+  log(`organic results: ${total}; selecting up to ${maxResults} real businesses`);
 
   const out = [];
-  for (let i = 0; i < n; i++) {
+  const skipped = { ads: 0, aggregators: 0, incomplete: 0 };
+  for (let i = 0; i < total && out.length < maxResults && i < maxScan; i++) {
     // Re-locate each iteration since we navigate away and back.
     const link = page.locator(provider.resultLink).nth(i);
     if (!(await link.count())) break;
+
+    // (a) Drop ad / tracking-redirect results without even opening them.
+    const href = await link.getAttribute('href').catch(() => null);
+    if (isAdLink(href)) {
+      skipped.ads += 1;
+      log(`  skip ad/redirect: ${(href || '').slice(0, 70)}`);
+      continue;
+    }
 
     await hb.click(link); // real click → real navigation to the result page
     await page.waitForLoadState('domcontentloaded').catch(() => {});
@@ -166,17 +213,35 @@ async function discover({ hb, provider, profile, maxResults = 5, log = () => {},
     if (!website) website = hostOf(url);
 
     business = business.replace(/\s+/g, ' ').trim();
-    if (business && website) {
-      out.push({ business, website, source: url, rank: i + 1 });
-      log(`  #${i + 1} ${business} — ${website}`);
-      progress('business-found', `Found ${business} (${website})`, { business, website, rank: i + 1 });
+
+    // (b) Drop directory / aggregator / search-engine domains — not a business.
+    if (isExcludedDomain(website) || isExcludedDomain(hostOf(url))) {
+      skipped.aggregators += 1;
+      log(`  skip aggregator/directory: ${website || hostOf(url)}`);
+    } else if (business && website) {
+      const rank = out.length + 1;
+      out.push({ business, website, source: url, rank });
+      log(`  #${rank} ${business} — ${website}`);
+      progress('business-found', `Found ${business} (${website})`, { business, website, rank });
+    } else {
+      skipped.incomplete += 1;
+      log(`  skip incomplete result: ${url}`);
     }
 
     await hb.back();
     await page.waitForSelector(provider.resultsReady, { timeout: 15000 }).catch(() => {});
   }
 
+  log(`kept ${out.length} real businesses (skipped ${skipped.ads} ads, ${skipped.aggregators} aggregators, ${skipped.incomplete} incomplete)`);
   return out;
 }
 
-module.exports = { discover, normalizeDomain, hostOf };
+module.exports = {
+  discover,
+  normalizeDomain,
+  hostOf,
+  isAdLink,
+  isExcludedDomain,
+  rootDomain,
+  EXCLUDED_DOMAINS,
+};

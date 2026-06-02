@@ -12,6 +12,7 @@
  * is fine — those are reads, not actions.
  */
 
+const fs = require('node:fs');
 const { chromium } = require('playwright');
 
 // Fallback UA only; launch() overrides this with one that matches the ACTUAL
@@ -20,6 +21,25 @@ const USER_AGENT =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+/**
+ * Prefer the FULL Chromium build (chrome-linux/chrome) over the separate
+ * headless-shell binary. With `headless:true` and no executablePath, Playwright
+ * demands `chromium_headless_shell`, which isn't always installable in
+ * restricted environments — whereas the full build runs fine in (new) headless
+ * mode and reaches the web. Returns null to fall back to Playwright's default.
+ */
+function resolveFullChromium() {
+  const override = process.env.LEADHUNTER_CHROMIUM_PATH;
+  if (override && fs.existsSync(override)) return override;
+  try {
+    const p = chromium.executablePath(); // points at the full chromium build
+    if (p && fs.existsSync(p) && !/headless[-_]shell/i.test(p)) return p;
+  } catch {
+    /* not installed via Playwright registry — fall through */
+  }
+  return null;
+}
 
 class HumanBrowser {
   /** @param {{headless?:boolean, log?:(m:string)=>void}} [opts] */
@@ -33,7 +53,8 @@ class HumanBrowser {
   }
 
   async launch() {
-    this.browser = await chromium.launch({
+    const executablePath = resolveFullChromium();
+    const launchOpts = {
       headless: this.headless,
       args: [
         '--no-sandbox', // Chromium setuid sandbox in containers
@@ -42,7 +63,21 @@ class HumanBrowser {
         // (a launch flag — no JS injection, stays within human-like operation).
         '--disable-blink-features=AutomationControlled',
       ],
-    });
+    };
+    if (executablePath) launchOpts.executablePath = executablePath;
+    this.log(`launch: ${executablePath || 'playwright default'} (headless=${this.headless})`);
+
+    try {
+      this.browser = await chromium.launch(launchOpts);
+    } catch (err) {
+      // A real browser is required — we never fall back to raw HTTP. Fail with a
+      // clear, actionable message instead of a cryptic Playwright error.
+      throw new Error(
+        `Real browser runtime unavailable: could not launch Chromium (${err.message}). ` +
+          `Install one with "npx playwright install chromium" or set LEADHUNTER_CHROMIUM_PATH ` +
+          `to a Chromium binary. Real mode requires a real browser and does not use raw HTTP.`,
+      );
+    }
 
     // Align the User-Agent with the real browser version we just launched.
     const major = (this.browser.version() || '').split('.')[0] || '124';

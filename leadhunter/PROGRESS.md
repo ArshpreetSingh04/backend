@@ -1,6 +1,39 @@
 # LeadHunter — PROGRESS
 
-_Updated 2026-06-02. Work Order #7 — anti-bot hardening + block diagnostics._
+_Updated 2026-06-02. Work Order #8 — filter ads/aggregators + launch portability._
+
+## ✅ Done — Work Order #8 (real leads, not ads/directories + full-Chromium launch)
+Grounded in a real live run (Arsh provisioned the full Chromium build and ran
+`--real` against LIVE DuckDuckGo for "dentists in Austin"):
+- **The WO#7 anti-bot 418 premise did NOT reproduce.** Driving the **full**
+  Chromium (headless=new), DDG rendered the SERP and `[data-testid="result"]` in
+  ~3.4s with 19 organic links — the 418 block was an artifact of the headless-
+  **shell** binary / no-egress sandbox, not DDG genuinely screening us. Real
+  discovery basically works once a real browser launches.
+- **THE REAL BUG (this increment): discovery returned ads + directories, not
+  businesses.** Top results for the live query were a DDG `/y.js` **ad redirect**
+  (host → duckduckgo.com) and aggregator pages (Yelp, Zocdoc, Opencare, a
+  Statesman listicle) — which the engine turned into junk "leads" (directory
+  titles + directory domains).
+  - **Fix (smarter SERP reading, still human-like — never raw HTTP)**
+    (`webSearchAdapter.js`): drop **ad/redirect** links by href
+    (`/y.js`, `/aclick`, `/aclk`, `ad_domain=`, …) before opening them, and drop
+    **directory/aggregator/search-engine domains** by a denylist (yelp, zocdoc,
+    opencare, yellowpages, healthgrades, mapquest, facebook, linkedin, tripadvisor,
+    statesman, duckduckgo/bing/google, …). Discovery now **keeps scanning past
+    junk** until it has up to `maxResults` real business homepages.
+- **Launch portability fix folded in** (`humanBrowser.js`): prefer the **full
+  Chromium build** via `executablePath` (`chromium.executablePath()`), with a
+  `LEADHUNTER_CHROMIUM_PATH` override, so real mode launches **without** the
+  separate `chromium_headless_shell` binary (which isn't always installable). On
+  failure it throws a clear **"real browser runtime unavailable"** message — it
+  never falls back to raw HTTP.
+- **Verified OFFLINE** (no egress here): new `npm run verify:filter` drives a REAL
+  browser against a junk-laden fixture (ad + Yelp/Zocdoc/Opencare above the real
+  dentists) and shows **before → after**: all **4 junk results dropped**, all **8
+  real businesses kept**; pure classifiers also match the exact live examples.
+  `smoke`, `test:engine`, `test:parser`, `verify:real`, `verify:antibot` all still
+  pass.
 
 ## ✅ Done — Work Order #7 (real discovery: anti-detection + clear block diagnostics)
 Grounded in a real live run (Arsh provisioned Chromium and ran `--real` against
@@ -182,22 +215,17 @@ discovery stays real-browser human-like.
   under `xvfb-run` and rendering leads (screenshot captured).
 
 ## ▶️ Next step
-1. **Live-validate against the open web** (needs egress + a provisioned Chromium):
-   run `--real` and confirm whether UA-alignment + the automation-flag strip clear
-   DDG's screen; if not, try `LEADHUNTER_PROVIDER=bing` and/or
-   `LEADHUNTER_HEADFUL=1` (headed under xvfb). Tune live selectors from a real run.
-   `[needs-key:network-egress]`
-2. **Graceful "real browser runtime unavailable" handling** (robustness): if the
-   real engine can't launch Chromium (no browser binary), fail with a clear
-   message — **without** bypassing humaning. `[needs-key:browser-runtime]`
+1. **Live end-to-end validation** (needs egress + provisioned Chromium): run
+   `--real` against live DDG/Bing and confirm the ad/aggregator filter yields real
+   business homepages; tune the denylist + result selectors from the real SERP.
+   Optionally follow a directory result to extract underlying business domains
+   (only if it stays small). `[needs-key:network-egress]`
 2. **Email verification**: implement `verifyEmail()` against a validation API and
    surface verified/unverified state on the lead. `[needs-key:enrich]`
-3. **Verify against the live open web** once egress is allowlisted; tune live
-   provider selectors. `[needs-key:network-egress]`
-4. **More source adapters**: Maps/Places `[needs-key:maps]`, business directories.
-5. **Pluggable LLM parser/planner & per-lead hooks** via the parser seam.
+3. **More source adapters**: Maps/Places `[needs-key:maps]`, business directories.
+4. **Pluggable LLM parser/planner & per-lead hooks** via the parser seam.
    `[needs-key:llm]`
-6. **Per-run CSV export + download button**; native-messaging bridge to the
+5. **Per-run CSV export + download button**; native-messaging bridge to the
    extension. `[needs-key:native-host]`
 
 ## 🛡️ Decision log — rejected "HTTP-fallback discovery" (2026-06-02)
@@ -216,11 +244,16 @@ discovery stays real-browser human-like.
 ## 🟡 Open decisions
 - **Engine runtime:** ✅ DECIDED — out-of-process **Playwright/Chromium** (was the
   WO#1 open question). Gives stealth/proxy control and clean process isolation.
-- **Live search provider:** DuckDuckGo is the default but **aggressively screens
-  automated browsers** (serves `static-pages/418`). Bing is now available as an
-  alternate (`LEADHUNTER_PROVIDER=bing`); headed-under-xvfb is another lever
-  (`LEADHUNTER_HEADFUL=1`). Open question (needs a live run): which provider +
-  mode reliably clears screening while staying human-like.
+- **Live search provider:** a live run showed **DuckDuckGo serves real results**
+  to the full Chromium build (the earlier 418 was a headless-shell/no-egress
+  artifact). DDG stays the default; Bing remains available
+  (`LEADHUNTER_PROVIDER=bing`) and headed-under-xvfb (`LEADHUNTER_HEADFUL=1`) as
+  levers. The real gap was ads/aggregators in the SERP — now filtered. Block
+  detection (WO#7) stays as a safety net.
+- **Ad/aggregator denylist:** maintained in `webSearchAdapter.js`
+  (`EXCLUDED_DOMAINS` + `AD_LINK_RE`). Judgment call on coverage; revisit/tune
+  from real SERPs. Open option: follow a directory result to its underlying
+  business domains (kept out for now to stay small).
 - **Browser-build provisioning:** pinned `playwright@1.56.1` to match the
   pre-provisioned browser at `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`. On a
   normal machine, `npx playwright install chromium` instead. Revisit when CI/host
@@ -248,12 +281,12 @@ discovery stays real-browser human-like.
 - `[needs-key:llm]` — LLM planner + per-lead hook generation. **Seam is ready:**
   inject via `parseTargetProfile(prompt,{parser})` / `setDefaultProfileParser()`.
 - `[needs-key:native-host]` — native-messaging host for desktop ↔ extension.
-- `[needs-key:browser-runtime]` — **NEW (robustness, Arsh to decide).** Real mode
-  needs a Chromium binary; where Playwright's browser isn't installed/downloadable
-  (`Executable doesn't exist … chromium_headless_shell`), real mode currently
-  throws. Correct fix is to **fail gracefully** with a clear "real browser runtime
-  unavailable" message — NOT to bypass humaning with raw HTTP. Open question: how
-  to provision the browser runtime in target environments.
+- `[needs-key:browser-runtime]` — **partly addressed (WO#8).** Real mode now
+  prefers the **full Chromium build** (`chromium.executablePath()`, override via
+  `LEADHUNTER_CHROMIUM_PATH`) instead of the often-missing `chromium_headless_shell`,
+  and **fails gracefully** with a clear "real browser runtime unavailable" message
+  (never raw HTTP). Remaining open question: how to provision/auto-install a
+  Chromium binary in restricted environments where the Playwright CDN is blocked.
 
 _`[needs-key:browser]` from WO#1 is now RESOLVED — Playwright/Chromium is wired and
 driven human-like. Everything still runs with no API keys or logins._
