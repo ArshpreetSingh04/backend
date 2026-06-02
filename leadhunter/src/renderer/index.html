@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;"
+    />
+    <title>LeadHunter</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">🎯</span>
+        <div>
+          <h1>LeadHunter</h1>
+          <p class="tagline">Type what you want. We go find it.</p>
+        </div>
+      </div>
+      <button id="openData" class="ghost" title="Open the folder with your DB &amp; CSV">
+        Open data folder
+      </button>
+    </header>
+
+    <main>
+      <section class="hunt">
+        <form id="huntForm" autocomplete="off">
+          <input
+            id="prompt"
+            class="prompt"
+            type="text"
+            placeholder="find 50 dentists in Austin with email and phone"
+            aria-label="Find Leads"
+          />
+          <button id="submit" type="submit" class="primary">Find Leads</button>
+        </form>
+        <div class="controls">
+          <label class="toggle" title="Off = instant mock leads. On = drive a real browser to research the open web.">
+            <input id="realToggle" type="checkbox" />
+            <span>Use real research engine</span>
+          </label>
+          <span id="mode-hint" class="mode-hint">Mock mode — safe, instant sample leads.</span>
+        </div>
+        <div id="status" class="status" role="status"></div>
+        <ol id="progress" class="progress" aria-live="polite"></ol>
+      </section>
+
+      <section class="results">
+        <table id="resultsTable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Business</th>
+              <th>Website</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Source</th>
+              <th>Hook</th>
+              <th class="num">Score</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <!-- empty until the first hunt -->
+          </tbody>
+        </table>
+        <div id="empty" class="empty">No leads yet — run a search above.</div>
+      </section>
+    </main>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

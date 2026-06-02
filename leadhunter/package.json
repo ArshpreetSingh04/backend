@@ -1,0 +1,27 @@
+{
+  "name": "leadhunter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LeadHunter — a do-it-for-me lead finder. Type one prompt, get qualified leads in a table, a SQLite DB and a CSV.",
+  "author": "Business Backend Platform",
+  "license": "UNLICENSED",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:headless": "xvfb-run -a electron .",
+    "hunt": "node src/cli.js",
+    "smoke": "node test/smoke.js",
+    "test:parser": "node test/parser.test.js",
+    "test:engine": "node test/engine.test.js",
+    "verify:real": "node test/verify-real.js",
+    "verify:antibot": "node test/verify-antibot.js",
+    "verify:filter": "node test/verify-filter.js"
+  },
+  "devDependencies": {
+    "electron": "^42.3.0",
+    "node-html-parser": "^7.1.0"
+  },
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}
