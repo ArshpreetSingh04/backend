@@ -1,44 +1,54 @@
 'use strict';
 
 /**
- * Search-provider configs for the web-search discovery adapter. A provider just
- * tells the adapter where the search box is, how to submit, when results are
- * ready, and how to read a business name + website off a result page — so new
- * engines are config, not code.
+ * Search-provider configs for the web-search discovery adapter.
+ *
+ * WO#10 (grounded in a live run): we navigate the real browser DIRECTLY to each
+ * provider's results URL instead of the homepage → type → press-Enter dance.
+ * That dance trips DuckDuckGo's bot screen (redirect to /static-pages/418) and
+ * silently fails on Bing (Enter never submits — the page stays on the
+ * autocomplete dropdown). Going straight to the results URL is still a REAL,
+ * human-like browser navigation — we just drop the interaction that gets us
+ * screened/stuck. (No raw HTTP: HumanBrowser.goto is a real navigation.)
+ *
+ * A provider exposes `searchUrl(query)` (the direct results page), the selector
+ * that means results are ready, and how to read a result link. Business
+ * name/website come from the LANDED page after a real click-through.
  */
 
-// Live, general web-search provider. Selectors are best-effort and NOT
-// verifiable in this environment because open-web egress is blocked by the
-// network allowlist ("Host not in allowlist"). [needs-key:network-egress]
-const DUCKDUCKGO = {
-  name: 'duckduckgo',
-  homeUrl: 'https://duckduckgo.com/',
-  searchBox: 'input[name="q"]',
-  submit: 'enter',
-  resultsReady: '[data-testid="result"], li.result, #links .result',
-  resultLink: '[data-testid="result-title-a"], a.result__a',
-  extract: { name: ['h1', 'title'], website: [] }, // website falls back to URL host
-  note: 'DDG aggressively screens automated browsers (redirects to static-pages/418). '
-    + 'The adapter now detects that and reports it; try LEADHUNTER_PROVIDER=bing or headed mode.',
-};
-
-// Alternate, often more bot-tolerant provider. Still REAL human-like navigation
-// in a browser (never raw HTTP). Selectors are best-effort and unverified here
-// because open-web egress is blocked in this environment.
+// PRIMARY live provider — its direct results URL returns real organic .b_algo
+// results headless, fast, with no block. Result links are /ck/a? redirect
+// wrappers, so the true business domain is resolved from the landed page.url()
+// after the click-through (and the denylist runs on that resolved host).
+// cc/setlang nudge results toward the user's locale (the sandbox IP can be
+// anywhere); the location term in the query also drives geo.
 const BING = {
   name: 'bing',
-  homeUrl: 'https://www.bing.com/',
-  searchBox: 'textarea[name="q"], input[name="q"], #sb_form_q',
-  submit: 'enter',
+  searchUrl: (q) => `https://www.bing.com/search?q=${encodeURIComponent(q)}&cc=US&setlang=en-US`,
   resultsReady: '#b_results .b_algo, li.b_algo',
   resultLink: '#b_results .b_algo h2 a, li.b_algo h2 a',
-  extract: { name: ['h1', 'title'], website: [] },
-  note: 'Alternate provider; unverified offline.',
+  extract: { name: ['h1', 'title'], website: [] }, // website ← resolved landed host
+  note: 'Primary. Direct results URL returns organic results headless; type→Enter does not submit.',
 };
 
-const PROVIDERS = { duckduckgo: DUCKDUCKGO, bing: BING };
+// Kept as a FALLBACK. Screens headless (homepage→type→Enter and the direct
+// results URL both redirect to static-pages/418), but may work headed or from a
+// residential IP elsewhere — so it stays in the chain after Bing.
+const DUCKDUCKGO = {
+  name: 'duckduckgo',
+  searchUrl: (q) => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
+  resultsReady: '[data-testid="result"], li.result, .result',
+  resultLink: '[data-testid="result-title-a"], a.result__a',
+  extract: { name: ['h1', 'title'], website: [] },
+  note: 'Fallback. Tends to serve static-pages/418 to headless browsers.',
+};
 
-/** Resolve a provider config by name (case-insensitive); undefined if unknown. */
+// Production live chain: Bing primary, DuckDuckGo fallback.
+const LIVE_CHAIN = [BING, DUCKDUCKGO];
+
+const PROVIDERS = { bing: BING, duckduckgo: DUCKDUCKGO };
+
+/** Resolve a single provider config by name (case-insensitive); undefined if unknown. */
 function getProvider(name) {
   return name ? PROVIDERS[String(name).trim().toLowerCase()] : undefined;
 }
@@ -51,13 +61,11 @@ function makeFixtureProvider(baseUrl) {
   const base = baseUrl.replace(/\/$/, '');
   return {
     name: 'fixture',
-    homeUrl: `${base}/`,
-    searchBox: 'input[name="q"]',
-    submit: 'enter',
+    searchUrl: (q) => `${base}/search?q=${encodeURIComponent(q)}`,
     resultsReady: '.result',
     resultLink: '.result a.result-link',
     extract: { name: ['h1.biz-name', 'h1', 'title'], website: ['a.biz-website'] },
   };
 }
 
-module.exports = { DUCKDUCKGO, BING, PROVIDERS, getProvider, makeFixtureProvider };
+module.exports = { BING, DUCKDUCKGO, LIVE_CHAIN, PROVIDERS, getProvider, makeFixtureProvider };

@@ -1,6 +1,42 @@
 # LeadHunter — PROGRESS
 
-_Updated 2026-06-02. Work Order #9 — offline verifiability with no Chromium._
+_Updated 2026-06-02. Work Order #10 — direct results-URL navigation + provider fallback chain._
+
+## ✅ Done — Work Order #10 (live discovery via direct results URL + Bing→DDG fallback)
+Grounded in a real live run (full Chromium build, headless, Chrome/141 UA, working
+egress):
+- **Corrects the WO#8 note:** the DDG **418 DOES reproduce headless with the full
+  Chromium build** — it is NOT a headless-shell artifact. The homepage → type →
+  press-Enter interaction is what trips DDG's screen: it redirects to
+  `static-pages/418.html`. `html.duckduckgo.com` is blocked the same way.
+- **Bing's type→Enter also fails** (Enter never submits; the page sits on the
+  autocomplete dropdown, so `#b_results .b_algo` times out). But **navigating the
+  real browser DIRECTLY to `https://www.bing.com/search?q=…` returns 10 real
+  organic `.b_algo` results in ~2s, headless, no block.**
+- **Fix (still real, human-like navigation — never raw HTTP):**
+  - `webSearchAdapter` now navigates **directly to the provider's results URL**
+    (`provider.searchUrl(query)`) instead of homepage→type→Enter — dropping the
+    interaction that gets us screened (DDG) or stuck (Bing).
+  - **Provider fallback chain**: try each provider's results URL in order; if one
+    serves a 418/challenge or yields zero usable businesses, fall through to the
+    next. Only emit `blocked` (and throw) if **all** providers fail.
+  - **Bing is the primary** live provider; **DuckDuckGo stays as fallback** (may
+    work headed / from a residential IP). Chain = `[bing, duckduckgo]`.
+  - Bing result links are `/ck/a?` redirect wrappers, so the true business domain
+    is taken from the **landed `page.url()`** after the real click-through, and the
+    ad/aggregator denylist runs on that **resolved host** (unchanged click-through
+    approach).
+  - Geo: Bing results URL adds `cc=US&setlang=en-US`; the location term in the
+    query also drives geo (sandbox IPs can be anywhere — flagged by the live run).
+- **Scope:** changes are in `webSearchAdapter.js` + `providers.js` (plus a minimal
+  provider-chain wiring in `realResearchEngine.js`). The offline `fixtureDriver`
+  path and the `browserFactory` injection seam were **not** touched.
+- **Verified:** `verify:real` + `verify:filter` stay green **both** with Chromium
+  and with none (fixture driver) — the fixture provider now uses a `searchUrl`.
+  `verify:antibot` confirms the chain → `blocked` diagnostic fires fast (~0.8s)
+  only after the chain is exhausted. (Live Bing couldn't be exercised in *this*
+  sandbox — egress is 403 here — but the Bing→DDG fallback wiring was confirmed
+  end-to-end, and live Bing success is per the grounded run above.)
 
 ## ✅ Done — Work Order #9 (no-Chromium fixture driver restores offline proofs)
 Grounded in a fresh clean-sandbox run of this branch: `npm install` is clean, but
@@ -43,6 +79,11 @@ Grounded in a real live run (Arsh provisioned the full Chromium build and ran
   ~3.4s with 19 organic links — the 418 block was an artifact of the headless-
   **shell** binary / no-egress sandbox, not DDG genuinely screening us. Real
   discovery basically works once a real browser launches.
+  - **⚠️ CORRECTED by WO#10:** the 418 **does** reproduce with the full Chromium
+    build too — it's triggered by the homepage → type → **press-Enter** flow, not
+    the binary. WO#10 switches to direct results-URL navigation (no Enter) and
+    makes Bing the primary provider. (The ~3.4s success above was likely an
+    already-warm session; the type→Enter submit is what DDG screens.)
 - **THE REAL BUG (this increment): discovery returned ads + directories, not
   businesses.** Top results for the live query were a DDG `/y.js` **ad redirect**
   (host → duckduckgo.com) and aggregator pages (Yelp, Zocdoc, Opencare, a
@@ -248,11 +289,13 @@ discovery stays real-browser human-like.
   under `xvfb-run` and rendering leads (screenshot captured).
 
 ## ▶️ Next step
-1. **Live end-to-end validation** (needs egress + provisioned Chromium): run
-   `--real` against live DDG/Bing and confirm the ad/aggregator filter yields real
-   business homepages; tune the denylist + result selectors from the real SERP.
-   Optionally follow a directory result to extract underlying business domains
-   (only if it stays small). `[needs-key:network-egress]` `[needs-key:browser-runtime]`
+1. **Live end-to-end run on Bing** (needs egress + Chromium): run `--real` and
+   confirm the direct results-URL + click-through yields real business homepages
+   (not `/ck/a` wrappers or aggregators), tune `.b_algo` selectors + the denylist
+   from the real SERP, and verify the `cc`/location geo actually returns local
+   results. `[needs-key:network-egress]` `[needs-key:browser-runtime]`
+2. **Bing geo from the query's location** (replace the hardcoded `cc=US` with a
+   region derived from the parsed location) once the live run shows what's needed.
 2. **Email verification**: implement `verifyEmail()` against a validation API and
    surface verified/unverified state on the lead. `[needs-key:enrich]`
 3. **More source adapters**: Maps/Places `[needs-key:maps]`, business directories.
@@ -277,12 +320,11 @@ discovery stays real-browser human-like.
 ## 🟡 Open decisions
 - **Engine runtime:** ✅ DECIDED — out-of-process **Playwright/Chromium** (was the
   WO#1 open question). Gives stealth/proxy control and clean process isolation.
-- **Live search provider:** a live run showed **DuckDuckGo serves real results**
-  to the full Chromium build (the earlier 418 was a headless-shell/no-egress
-  artifact). DDG stays the default; Bing remains available
-  (`LEADHUNTER_PROVIDER=bing`) and headed-under-xvfb (`LEADHUNTER_HEADFUL=1`) as
-  levers. The real gap was ads/aggregators in the SERP — now filtered. Block
-  detection (WO#7) stays as a safety net.
+- **Live search provider:** ✅ DECIDED (WO#10) — **Bing primary, DuckDuckGo
+  fallback**, reached via **direct results-URL navigation** (no homepage→type→
+  Enter, which DDG screens with a 418 and Bing fails to submit). The fallback
+  chain auto-advances and only reports `blocked` if all providers fail. Open: tune
+  Bing selectors/geo from a live run; DDG may still serve headed/residential.
 - **Ad/aggregator denylist:** maintained in `webSearchAdapter.js`
   (`EXCLUDED_DOMAINS` + `AD_LINK_RE`). Judgment call on coverage; revisit/tune
   from real SERPs. Open option: follow a directory result to its underlying

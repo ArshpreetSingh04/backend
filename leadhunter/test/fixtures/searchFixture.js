@@ -161,12 +161,12 @@ function startFixture(opts = {}) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
     if (blockMode) {
-      if (u.pathname === '/') {
-        res.statusCode = 302;
-        res.setHeader('Location', '/static-pages/418.html');
-        return res.end();
-      }
+      // Screen ALL routes (homepage and the /search results URL discovery hits)
+      // by redirecting to the 418 challenge page, mirroring DDG's behaviour.
       if (u.pathname.startsWith('/static-pages/')) return res.end(blockPage());
+      res.statusCode = 302;
+      res.setHeader('Location', '/static-pages/418.html');
+      return res.end();
     }
 
     if (u.pathname === '/') return res.end(homePage());

@@ -70,13 +70,13 @@ async function run() {
   await blocked.close();
 
   assert.ok(threw, 'blocked discovery should throw a clear error (not return silently)');
-  assert.match(threw.message, /block\/challenge|screened/i, `diagnostic should name the block: ${threw && threw.message}`);
+  assert.match(threw.message, /blocked|screened|challenge/i, `diagnostic should name the block: ${threw && threw.message}`);
   const blockEvt = events.find((e) => e.phase === 'blocked');
-  assert.ok(blockEvt, 'a "blocked" progress event should fire');
-  assert.match(blockEvt.message, /block\/challenge|screened/i, 'blocked event should carry the diagnostic');
+  assert.ok(blockEvt, 'a "blocked" progress event should fire (only after ALL providers fail)');
+  assert.match(blockEvt.message, /blocked|screened|challenge/i, 'blocked event should carry the diagnostic');
   assert.match(blockEvt.data && blockEvt.data.url ? blockEvt.data.url : '', /static-pages\/418/, 'blocked event should name the challenge URL');
   assert.ok(elapsed < 15000, `should fail fast, not wait out a silent 20s timeout (took ${elapsed}ms)`);
-  console.log(`✓ anti-bot block detected fast (${elapsed}ms), with a "blocked" progress event`);
+  console.log(`✓ anti-bot block detected fast (${elapsed}ms), with a "blocked" progress event after the chain exhausted`);
   console.log(`  diagnostic: ${threw.message}`);
 
   console.log('\nAll anti-bot checks passed. ✅');

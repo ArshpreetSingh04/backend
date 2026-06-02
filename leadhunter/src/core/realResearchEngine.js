@@ -16,7 +16,7 @@ const { HumanBrowser } = require('./browser/humanBrowser');
 const webSearch = require('./adapters/webSearchAdapter');
 const maps = require('./adapters/mapsAdapter');
 const enrich = require('./adapters/enrichmentAdapter');
-const { DUCKDUCKGO } = require('./adapters/providers');
+const { LIVE_CHAIN } = require('./adapters/providers');
 
 class RealResearchEngine {
   /**
@@ -28,7 +28,10 @@ class RealResearchEngine {
    */
   constructor(opts = {}) {
     this.name = 'real';
-    this.provider = opts.provider || DUCKDUCKGO;
+    // A single explicit provider (e.g. the test fixture, or LEADHUNTER_PROVIDER)
+    // becomes a one-link chain; otherwise use the live chain (Bing → DuckDuckGo).
+    this.providers = opts.provider ? [opts.provider] : LIVE_CHAIN;
+    this.provider = this.providers[0]; // primary, for plan() display
     this.headless = opts.headless !== false;
     this.maxResults = opts.maxResults || 5;
     this.log = opts.log || ((m) => console.log(`[real] ${m}`));
@@ -76,10 +79,10 @@ class RealResearchEngine {
     let leads = [];
     try {
       await hb.launch();
-      this.progress('searching', `Opening ${this.provider.name} and searching "${plan.query}"`, { query: plan.query });
+      this.progress('searching', `Searching [${this.providers.map((p) => p.name).join(' → ')}] for "${plan.query}"`, { query: plan.query });
       let discoveries = await webSearch.discover({
         hb,
-        provider: this.provider,
+        providers: this.providers,
         profile: plan,
         maxResults: limit,
         log: this.log,

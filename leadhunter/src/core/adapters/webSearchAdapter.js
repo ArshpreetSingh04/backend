@@ -3,13 +3,16 @@
 /**
  * webSearchAdapter — ONE concrete, REAL discovery path.
  *
- * It drives a real browser (via HumanBrowser) to: open a search engine, type a
- * query built from the target profile (niche + location), submit, wait for the
- * organic results, then open the top results one by one and read off the real
- * business name + website/domain + the source URL.
+ * Drives a real browser (via HumanBrowser) DIRECTLY to a provider's results URL
+ * (built from the query), waits for the organic results, then opens the top
+ * results one by one (real click-through) and reads off the real business name +
+ * website/domain + source URL. Going straight to the results page (rather than
+ * homepage → type → Enter) avoids the interaction that trips bot screening.
  *
- * All page *interactions* are human-like (mouse/keyboard). Pulling text/attrs
- * off a result page for extraction is a read, which is allowed.
+ * Providers are tried as a FALLBACK CHAIN: if one serves a challenge page or
+ * yields zero usable businesses, we fall through to the next; only if ALL fail
+ * do we report "blocked". All page *interactions* are human-like; reading
+ * text/attrs for extraction is allowed. Never raw HTTP.
  */
 
 function hostOf(url) {
@@ -118,66 +121,37 @@ async function firstWebsite(page, selectors) {
   return '';
 }
 
+/** An error that means "this provider was screened" (so the chain falls through). */
+function blockedError(provider, info) {
+  const e = new Error(`provider "${provider.name}" screened: ${info.reason}`);
+  e.blocked = true;
+  e.reason = info.reason;
+  e.url = info.url;
+  return e;
+}
+
 /**
- * @param {object} args
- * @param {import('../browser/humanBrowser').HumanBrowser} args.hb
- * @param {object} args.provider
- * @param {{vertical:string, location:string|null}} args.profile
- * @param {number} [args.maxResults]
- * @param {(m:string)=>void} [args.log]
- * @returns {Promise<Array<{business:string, website:string, source:string, rank:number}>>}
+ * Discover via ONE provider: navigate directly to its results URL, then
+ * click-through the organic results. Throws on a block/challenge or a results
+ * timeout; returns leads (possibly empty after ad/aggregator filtering).
  */
-async function discover({ hb, provider, profile, maxResults = 5, log = () => {}, progress = () => {} }) {
+async function discoverViaProvider({ hb, provider, query, maxResults = 5, log = () => {}, progress = () => {} }) {
   const page = hb.page;
-  // Prefer the engine's shaped query (niche + location + extra qualifiers);
-  // fall back to the legacy niche+location for any older caller.
-  const query = (profile.query
-    || [profile.niche || profile.vertical, profile.location].filter(Boolean).join(' ')).trim();
-  log(`web-search query: "${query}" via ${provider.name}`);
-
-  // Fail with a clear, specific reason instead of a silent selector timeout.
-  const reportBlock = (b) => {
-    const msg =
-      `Search provider "${provider.name}" served an anti-bot block/challenge page — ${b.reason}. ` +
-      `Real-browser discovery was screened, so no leads were found. ` +
-      `Try a headed browser (LEADHUNTER_HEADFUL=1 under xvfb) or an alternate provider (LEADHUNTER_PROVIDER=bing).`;
-    progress('blocked', msg, { provider: provider.name, url: b.url });
-    log(`BLOCKED: ${b.reason}`);
-    throw new Error(msg);
-  };
-  const waitForOrDiagnose = async (selector, timeout, label) => {
-    try {
-      await page.waitForSelector(selector, { timeout });
-    } catch {
-      const b = await detectBlock(page);
-      if (b.blocked) reportBlock(b);
-      const msg =
-        `Timed out (${timeout}ms) waiting for ${label} on "${provider.name}" (selector: ${selector}). ` +
-        `Current page: ${page.url()} — the real browser was likely screened, or the provider selectors are stale.`;
-      progress('error', msg, { provider: provider.name, url: page.url() });
-      log(msg);
-      throw new Error(msg);
-    }
-  };
-
-  // Open the search engine and type the query like a person.
-  await hb.goto(provider.homeUrl);
+  const resultsUrl = provider.searchUrl ? provider.searchUrl(query) : provider.homeUrl;
+  log(`→ ${provider.name}: ${resultsUrl}`);
+  await hb.goto(resultsUrl);
 
   // Anti-bot screens often hit immediately (e.g. DDG redirects to static-pages/418).
   const preBlock = await detectBlock(page);
-  if (preBlock.blocked) reportBlock(preBlock);
+  if (preBlock.blocked) throw blockedError(provider, preBlock);
 
-  await waitForOrDiagnose(provider.searchBox, 15000, 'the search box');
-  const box = page.locator(provider.searchBox).first();
-  await hb.type(box, query);
-
-  if (provider.submit === 'enter') {
-    await hb.pressEnter();
-  } else {
-    await hb.click(page.locator(provider.submit).first());
+  try {
+    await page.waitForSelector(provider.resultsReady, { timeout: 15000 });
+  } catch {
+    const b = await detectBlock(page);
+    if (b.blocked) throw blockedError(provider, b);
+    throw new Error(`no results from "${provider.name}" (selector ${provider.resultsReady} on ${page.url()})`);
   }
-
-  await waitForOrDiagnose(provider.resultsReady, 20000, 'organic results');
   await hb.scroll(2);
 
   const total = await page.locator(provider.resultLink).count();
@@ -236,8 +210,56 @@ async function discover({ hb, provider, profile, maxResults = 5, log = () => {},
   return out;
 }
 
+/**
+ * Discover across a provider FALLBACK CHAIN. Tries each provider's direct
+ * results URL in order; returns the first non-empty set of real businesses. If a
+ * provider is screened or yields nothing, it falls through to the next. Only if
+ * ALL providers fail does it emit a `blocked` progress event and throw.
+ *
+ * @param {object} args
+ * @param {import('../browser/humanBrowser').HumanBrowser} args.hb
+ * @param {object[]} [args.providers]  the chain; falls back to [args.provider]
+ * @param {object} [args.provider]     single provider (back-compat)
+ * @param {{query?:string, niche?:string, vertical?:string, location?:string|null}} args.profile
+ * @param {number} [args.maxResults]
+ * @param {(m:string)=>void} [args.log]
+ * @param {(phase:string,msg:string,data?:object)=>void} [args.progress]
+ * @returns {Promise<Array<{business:string, website:string, source:string, rank:number}>>}
+ */
+async function discover({ hb, providers, provider, profile, maxResults = 5, log = () => {}, progress = () => {} }) {
+  const chain = (providers && providers.length) ? providers : [provider].filter(Boolean);
+  const query = (profile.query
+    || [profile.niche || profile.vertical, profile.location].filter(Boolean).join(' ')).trim();
+  log(`web-search query: "${query}" via [${chain.map((p) => p.name).join(' → ')}]`);
+
+  const failures = [];
+  let lastBlockUrl = null;
+  for (let i = 0; i < chain.length; i++) {
+    const p = chain[i];
+    const next = chain[i + 1];
+    try {
+      const leads = await discoverViaProvider({ hb, provider: p, query, maxResults, log, progress });
+      if (leads.length > 0) return leads;
+      failures.push(`${p.name}: 0 usable results`);
+      if (next) progress('searching', `${p.name} returned no usable leads — trying ${next.name}…`, { provider: p.name });
+    } catch (err) {
+      const reason = err.blocked ? `blocked (${err.reason})` : (err.message || 'error');
+      if (err.blocked && err.url) lastBlockUrl = err.url;
+      failures.push(`${p.name}: ${reason}`);
+      log(`provider "${p.name}" failed: ${reason}`);
+      if (next) progress('searching', `${p.name} ${err.blocked ? 'screened' : 'failed'} — trying ${next.name}…`, { provider: p.name });
+    }
+  }
+
+  const msg = `All ${chain.length} search provider(s) screened or returned no leads — ${failures.join('; ')}. No leads found.`;
+  progress('blocked', msg, { providers: chain.map((p) => p.name), url: lastBlockUrl });
+  log(`BLOCKED: ${msg}`);
+  throw new Error(msg);
+}
+
 module.exports = {
   discover,
+  discoverViaProvider,
   normalizeDomain,
   hostOf,
   isAdLink,
