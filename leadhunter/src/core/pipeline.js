@@ -44,7 +44,14 @@ async function runLeadHunt(prompt, opts = {}) {
   const dbPath = opts.dbPath || path.join(dataDir, 'leadhunter.db');
   const csvPath = opts.csvPath || path.join(dataDir, 'leads.csv');
 
-  const engine = createEngine({ mode: opts.mode || 'mock' });
+  const engine = createEngine({
+    mode: opts.mode || 'mock',
+    // Forwarded only to the real engine; ignored by the mock.
+    provider: opts.provider,
+    headless: opts.headless,
+    maxResults: opts.maxResults,
+    log: opts.log,
+  });
 
   const plan = await engine.plan(prompt);
   const rawLeads = await engine.findLeads(prompt, { limit: plan.count });

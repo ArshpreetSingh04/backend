@@ -32,6 +32,7 @@ class LeadStore {
         hunt_id   INTEGER REFERENCES hunts(id),
         name      TEXT,
         business  TEXT,
+        website   TEXT,
         email     TEXT,
         phone     TEXT,
         source    TEXT,
@@ -44,6 +45,12 @@ class LeadStore {
       -- Prevent the same business/contact being stored twice.
       CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_dedupe ON leads(dedupe_key);
     `);
+
+    // Guarded migration: add `website` to DBs created before WO#2.
+    const cols = this.db.prepare('PRAGMA table_info(leads)').all().map((c) => c.name);
+    if (!cols.includes('website')) {
+      this.db.exec('ALTER TABLE leads ADD COLUMN website TEXT');
+    }
   }
 
   /**
@@ -69,8 +76,8 @@ class LeadStore {
   insertLeads(huntId, leads) {
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO leads
-        (hunt_id, name, business, email, phone, source, hook, score, dedupe_key)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (hunt_id, name, business, website, email, phone, source, hook, score, dedupe_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     let inserted = 0;
     let skipped = 0;
@@ -80,6 +87,7 @@ class LeadStore {
         huntId,
         l.name ?? null,
         l.business ?? null,
+        l.website ?? null,
         l.email ?? null,
         l.phone ?? null,
         l.source ?? null,
@@ -113,6 +121,7 @@ function dedupeKey(lead) {
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (lead.email) return `email:${norm(lead.email)}`;
   if (lead.phone) return `phone:${norm(lead.phone).replace(/[^\d+]/g, '')}`;
+  if (lead.website) return `web:${norm(lead.website).replace(/^www\./, '')}`;
   return `nb:${norm(lead.name)}|${norm(lead.business)}`;
 }
 

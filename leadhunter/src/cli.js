@@ -11,12 +11,19 @@
 const { runLeadHunt } = require('./core/pipeline');
 
 async function main() {
-  const prompt = process.argv.slice(2).join(' ').trim()
+  const args = process.argv.slice(2);
+  const real = args.includes('--real'); // drive a real browser (live web)
+  const prompt = args.filter((a) => !a.startsWith('--')).join(' ').trim()
     || 'find 50 dentists in Austin with email and phone';
+  const mode = real ? 'real' : 'mock';
 
-  console.log(`\n🎯 LeadHunter — "${prompt}"\n`);
+  console.log(`\n🎯 LeadHunter [${mode}] — "${prompt}"\n`);
+  if (real) {
+    console.log('Note: --real hits the live open web. In a sandbox with an egress');
+    console.log('allowlist this may fail; use `npm run verify:real` for a local proof.\n');
+  }
 
-  const result = await runLeadHunt(prompt);
+  const result = await runLeadHunt(prompt, { mode });
 
   console.log('Plan:', JSON.stringify({
     count: result.plan.count,
@@ -29,6 +36,7 @@ async function main() {
   console.table(result.leads.map((l) => ({
     name: l.name,
     business: l.business,
+    website: l.website,
     email: l.email,
     phone: l.phone,
     source: l.source,

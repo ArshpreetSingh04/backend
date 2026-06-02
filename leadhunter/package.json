@@ -10,9 +10,13 @@
     "start": "electron .",
     "start:headless": "xvfb-run -a electron .",
     "hunt": "node src/cli.js",
-    "smoke": "node test/smoke.js"
+    "smoke": "node test/smoke.js",
+    "verify:real": "node test/verify-real.js"
   },
   "devDependencies": {
     "electron": "^42.3.0"
+  },
+  "dependencies": {
+    "playwright": "1.56.1"
   }
 }

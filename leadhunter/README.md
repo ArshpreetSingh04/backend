@@ -49,11 +49,32 @@ npm start
 npm run start:headless        # uses xvfb-run
 
 # Headless pipeline (no GUI) — great for scripting & verification
-npm run hunt -- "find 50 dentists in Austin with email and phone"
+npm run hunt -- "find 50 dentists in Austin with email and phone"   # mock
+npm run hunt -- --real "find 50 dentists in Austin"                 # real browser, live web
 
-# Smoke test (parse -> mock research -> dedupe -> SQLite -> CSV)
-npm run smoke
+# Tests / verification
+npm run smoke         # mock pipeline: parse -> research -> dedupe -> SQLite -> CSV
+npm run verify:real   # REAL Chromium drives a local fixture search engine end-to-end
 ```
+
+### Real browser engine (Playwright)
+`mode:'real'` uses **Playwright + Chromium**, driven human-like (real
+navigation, mouse, keyboard, scrolling — never injected JS). Install the browser
+once:
+```bash
+npx playwright install chromium
+# (or set PLAYWRIGHT_BROWSERS_PATH to a pre-provisioned browsers dir)
+```
+The current real source adapter is a **general web search** (open engine → type
+`niche + location` → open top organic results → extract business name +
+website/domain + source URL). Contact `email`/`phone`/`hook` are left empty and
+flagged `[needs-key:enrich]` — never faked. A Maps/Places adapter is stubbed
+(`[needs-key:maps]`).
+
+> **Egress note:** if your environment has a network allowlist that blocks the
+> open web, the *live* path can't reach search engines (`[needs-key:network-egress]`).
+> `npm run verify:real` proves the engine end-to-end against a local fixture
+> regardless. See **PROGRESS.md**.
 
 > In a container you may need `--no-sandbox` (Chromium setuid sandbox):
 > `npm run start:headless -- --no-sandbox`.
@@ -65,9 +86,13 @@ By default everything lands in `~/.leadhunter/`:
 
 The desktop app's **Open data folder** button reveals it.
 
-## Swapping mock → real
-`createEngine({ mode })` in `src/core/researchEngine.js` is the seam. A future
-`mode: 'real'` engine implements the same `plan()` / `findLeads()` contract by
-driving a real browser — the UI, pipeline, DB and CSV don't change.
+## Mock ↔ real
+`createEngine({ mode })` in `src/core/researchEngine.js` is the seam.
+- `mode:'mock'` → `MockResearchEngine` (5 canned leads; default).
+- `mode:'real'` → `RealResearchEngine` (`src/core/realResearchEngine.js`) which
+  drives a real browser via the web-search adapter.
+
+Both implement the same `plan()` / `findLeads()` contract, so the UI, pipeline,
+DB and CSV are unchanged either way.
 
 See **PROGRESS.md** for status and the `[needs-key:*]` list.

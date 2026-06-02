@@ -7,7 +7,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DEFAULT_COLUMNS = ['name', 'business', 'email', 'phone', 'source', 'hook', 'score'];
+const DEFAULT_COLUMNS = ['name', 'business', 'email', 'phone', 'source', 'hook', 'score', 'website'];
 
 /**
  * Serialize rows to a CSV string.

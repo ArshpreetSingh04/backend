@@ -86,6 +86,7 @@ function buildMockLeads(plan) {
     return {
       name: s.name,
       business: s.business,
+      website: `${slug}.example.com`, // mock domain
       email: `contact@${slug}.example.com`, // [needs-key:enrich] mock, unverified
       phone: `+1-512-555-${String(1000 + i * 137).padStart(4, '0')}`,
       source: s.source,
@@ -116,11 +117,11 @@ function titleCase(s) {
  */
 function createEngine(opts = {}) {
   switch (opts.mode) {
-    case 'real':
-      // [needs-key:browser] Not implemented yet — falls back to mock for now.
-      // eslint-disable-next-line no-console
-      console.warn('[researchEngine] real mode not implemented yet — using mock. [needs-key:browser]');
-      return new MockResearchEngine();
+    case 'real': {
+      // Lazy require so the mock path never needs Playwright loaded.
+      const { RealResearchEngine } = require('./realResearchEngine');
+      return new RealResearchEngine(opts);
+    }
     case 'mock':
     default:
       return new MockResearchEngine();

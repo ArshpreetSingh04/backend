@@ -54,6 +54,7 @@ function renderLeads(leads) {
     tr.append(
       cell(lead.name),
       cell(lead.business),
+      cell(lead.website),
       cell(lead.email),
       cell(lead.phone),
       cell(lead.source),
