@@ -1,6 +1,29 @@
 # LeadHunter — PROGRESS
 
-_Updated 2026-06-02. Work Order #2 — real humaning browser research engine._
+_Updated 2026-06-02. Work Order #3 — real prompt → TargetProfile parsing._
+
+## ✅ Done — Work Order #3 (prompt → TargetProfile parser)
+- **Real deterministic parser** (`src/core/promptParser.js`) converts any
+  Find-Leads prompt into a structured **TargetProfile**:
+  `{ raw, niche, role, location, count, requiredContactFields[], extraQualifiers[] }`
+  (`role` is an alias of `niche` — the "niche/role" concept).
+- **Generalizes to ANY niche** (not just dentists): plumbers, "saas marketing
+  managers", "roofing contractors", "independent coffee shops", "alpaca farms", …
+- **Robust extraction:** count (with a **sensible default** when none is given),
+  location after `in/near/around/within/across` up to a clause boundary
+  (handles "Austin", "Denver", "NYC", "New York City"), niche by stripping
+  verbs/count/location/qualifier clauses, and **required contact fields** inferred
+  from "with email / phone / website / linkedin". Numbers that are really
+  qualifiers ("50+ employees", "5 star reviews") are **not** mistaken for the
+  count; unrecognised constraints (e.g. "instagram") land in `extraQualifiers`.
+- **No LLM dependency**, but a **clean injectable seam**: `parseTargetProfile(prompt,
+  {parser})` per call, or `setDefaultProfileParser(fn)` globally, to swap in a
+  pluggable LLM parser later. `[needs-key:llm]`
+- **Parsing-only diff:** research engines/CLI untouched — `parsePrompt()` kept as a
+  backward-compatible view (`vertical=niche`, `fields=requiredContactFields`).
+- **Tests:** new `npm run test:parser` covers 6 varied prompts + arbitrary-niche
+  generalization + the injectable-seam swap/reset — all pass. `npm run smoke`
+  still passes.
 
 ## ✅ Done — Work Order #2 (real browser research engine)
 - **`RealResearchEngine`** wired behind the existing `createEngine({mode:'real'})`
@@ -63,20 +86,20 @@ _Updated 2026-06-02. Work Order #2 — real humaning browser research engine._
   under `xvfb-run` and rendering leads (screenshot captured).
 
 ## ▶️ Next step
-1. **Verify against the live open web**: with egress allowlisted, run
-   `npm run hunt -- --real "find 50 dentists in Austin"` and tune the live
-   provider selectors (DuckDuckGo/Bing). `[needs-key:network-egress]`
-2. **Enrichment adapter**: turn each discovered business + website into a
-   verified email/phone (visit the site's contact page human-like, and/or a
-   verification provider). Fills the `[needs-key:enrich]` gap.
-3. **Wire the desktop app to `mode:'real'`** (currently UI runs the mock) with a
-   mock/real toggle, and stream live browser progress to the UI.
-4. **More source adapters**: Maps/Places `[needs-key:maps]`, business directories.
-5. **LLM-backed planner & per-lead hooks** to replace the regex parser/null hook.
+1. **Feed the TargetProfile into the engine**: have `plan()` consume the richer
+   profile (use `requiredContactFields` + `extraQualifiers` to shape the query and
+   filter results) instead of the legacy `parsePrompt` view.
+2. **Enrichment adapter**: turn each discovered business + website into a verified
+   email/phone (visit the contact page human-like, and/or a verification provider).
+   Fills the `[needs-key:enrich]` gap.
+3. **Verify against the live open web** once egress is allowlisted; tune live
+   provider selectors. `[needs-key:network-egress]`
+4. **Wire the desktop app to `mode:'real'`** with a mock/real toggle + live progress.
+5. **More source adapters**: Maps/Places `[needs-key:maps]`, business directories.
+6. **Pluggable LLM parser/planner & per-lead hooks** via the new parser seam.
    `[needs-key:llm]`
-6. **Per-run CSV export + download button**; let the user pick the data folder.
-7. **Native-messaging bridge** between desktop app and the companion extension.
-   `[needs-key:native-host]`
+7. **Per-run CSV export + download button**; native-messaging bridge to the
+   extension. `[needs-key:native-host]`
 
 ## 🟡 Open decisions
 - **Engine runtime:** ✅ DECIDED — out-of-process **Playwright/Chromium** (was the
@@ -88,6 +111,8 @@ _Updated 2026-06-02. Work Order #2 — real humaning browser research engine._
   pre-provisioned browser at `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`. On a
   normal machine, `npx playwright install chromium` instead. Revisit when CI/host
   changes.
+- **Parser defaults:** default count = 25 when none is given; default contact
+  fields = email+phone when none are requested. Revisit if users expect otherwise.
 - **Scoring model:** real engine uses a preliminary rank-based score; real
   criteria (reviews, freshness, fit) still TBD.
 - **Packaging:** add `electron-builder` for installers, or stay dev-run? (Deferred.)
@@ -103,7 +128,8 @@ _Updated 2026-06-02. Work Order #2 — real humaning browser research engine._
 - `[needs-key:enrich]` — email/phone enrichment & verification (the real engine
   leaves these `null` today).
 - `[needs-key:maps]` — Google Maps / Places business discovery (adapter stubbed).
-- `[needs-key:llm]` — LLM planner + per-lead hook generation.
+- `[needs-key:llm]` — LLM planner + per-lead hook generation. **Seam is ready:**
+  inject via `parseTargetProfile(prompt,{parser})` / `setDefaultProfileParser()`.
 - `[needs-key:native-host]` — native-messaging host for desktop ↔ extension.
 
 _`[needs-key:browser]` from WO#1 is now RESOLVED — Playwright/Chromium is wired and

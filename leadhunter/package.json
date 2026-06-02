@@ -11,6 +11,7 @@
     "start:headless": "xvfb-run -a electron .",
     "hunt": "node src/cli.js",
     "smoke": "node test/smoke.js",
+    "test:parser": "node test/parser.test.js",
     "verify:real": "node test/verify-real.js"
   },
   "devDependencies": {
