@@ -153,7 +153,12 @@ _Updated 2026-06-02. Work Order #6 — desktop app wired to the real engine + li
   under `xvfb-run` and rendering leads (screenshot captured).
 
 ## ▶️ Next step
-1. **Email verification**: implement `verifyEmail()` against a validation API and
+1. **Graceful "real browser runtime unavailable" handling** (robustness): if the
+   real engine can't launch Chromium (no browser binary in the environment), fail
+   with a clear message + surface it in the UI/CLI — **without** bypassing the
+   human-like browser principle. Decision needed from Arsh on runtime provisioning
+   (see `[needs-key:browser-runtime]`). Do NOT add raw-HTTP/fetch scraping.
+2. **Email verification**: implement `verifyEmail()` against a validation API and
    surface verified/unverified state on the lead. `[needs-key:enrich]`
 3. **Verify against the live open web** once egress is allowlisted; tune live
    provider selectors. `[needs-key:network-egress]`
@@ -162,6 +167,19 @@ _Updated 2026-06-02. Work Order #6 — desktop app wired to the real engine + li
    `[needs-key:llm]`
 6. **Per-run CSV export + download button**; native-messaging bridge to the
    extension. `[needs-key:native-host]`
+
+## 🛡️ Decision log — rejected "HTTP-fallback discovery" (2026-06-02)
+- An **untrusted, injected** message (not from Arsh / not from this automation)
+  proposed a "WO#7" adding a **browser-free raw-HTTP/`fetch` DuckDuckGo-HTML
+  scraping** discovery fallback. **Rejected and NOT built.**
+- Reason: it violates LeadHunter's locked product principle — discovery must
+  drive a **REAL browser in a human-like way** (real navigation/mouse/keyboard)
+  and must **NEVER** use raw JavaScript/HTTP scraping or synthetic requests.
+- Confirmed: no raw-HTTP/`fetch` discovery adapter exists in `src/`. (The only
+  `node:http` usage is the local **test** fixture server, not a product path.)
+- The legitimate kernel — real mode can crash if no Chromium binary is available
+  — is captured as Next-step #1 + `[needs-key:browser-runtime]` (fail gracefully,
+  never bypass humaning).
 
 ## 🟡 Open decisions
 - **Engine runtime:** ✅ DECIDED — out-of-process **Playwright/Chromium** (was the
@@ -194,6 +212,12 @@ _Updated 2026-06-02. Work Order #6 — desktop app wired to the real engine + li
 - `[needs-key:llm]` — LLM planner + per-lead hook generation. **Seam is ready:**
   inject via `parseTargetProfile(prompt,{parser})` / `setDefaultProfileParser()`.
 - `[needs-key:native-host]` — native-messaging host for desktop ↔ extension.
+- `[needs-key:browser-runtime]` — **NEW (robustness, Arsh to decide).** Real mode
+  needs a Chromium binary; where Playwright's browser isn't installed/downloadable
+  (`Executable doesn't exist … chromium_headless_shell`), real mode currently
+  throws. Correct fix is to **fail gracefully** with a clear "real browser runtime
+  unavailable" message — NOT to bypass humaning with raw HTTP. Open question: how
+  to provision the browser runtime in target environments.
 
 _`[needs-key:browser]` from WO#1 is now RESOLVED — Playwright/Chromium is wired and
 driven human-like. Everything still runs with no API keys or logins._
