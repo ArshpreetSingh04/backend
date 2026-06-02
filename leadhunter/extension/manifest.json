@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "LeadHunter Companion",
+  "version": "0.1.0",
+  "description": "Companion browser extension for LeadHunter — capture leads from pages you visit and assist the human-like research engine. STUB.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "LeadHunter Companion"
+  }
+}

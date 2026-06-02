@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# local data (SQLite db + CSV exports live in ~/.leadhunter by default,
+# but ignore any that land in-tree)
+*.db
+*.db-journal
+*.sqlite
+leads.csv
+data/
+dist/
+
+# OS / editor
+.DS_Store
+*.log
