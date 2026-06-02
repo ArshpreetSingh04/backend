@@ -15,6 +15,7 @@ const { parseTargetProfile } = require('./promptParser');
 const { HumanBrowser } = require('./browser/humanBrowser');
 const webSearch = require('./adapters/webSearchAdapter');
 const maps = require('./adapters/mapsAdapter');
+const enrich = require('./adapters/enrichmentAdapter');
 const { DUCKDUCKGO } = require('./adapters/providers');
 
 class RealResearchEngine {
@@ -61,26 +62,33 @@ class RealResearchEngine {
     const limit = opts.limit || this.maxResults;
 
     const hb = new HumanBrowser({ headless: this.headless, log: this.log });
-    let discoveries = [];
+    let leads = [];
     try {
       await hb.launch();
-      discoveries = await webSearch.discover({
+      let discoveries = await webSearch.discover({
         hb,
         provider: this.provider,
         profile: plan,
         maxResults: limit,
         log: this.log,
       });
+
+      // Maps discovery is stubbed pending a key; it returns nothing for now.
+      discoveries = discoveries.concat(await maps.discover(plan)); // [needs-key:maps]
+
+      // Qualify + score using the TargetProfile.
+      leads = qualifyLeads(discoveries, plan);
+
+      // Enrich leads still missing a required contact field (email/phone) by
+      // visiting their site human-like, then re-score — filling a required field
+      // removes its down-rank penalty.
+      leads = await enrich.enrichLeads({ hb, leads, profile: plan, log: this.log });
+      for (const lead of leads) lead.score = scoreLead(lead, plan);
     } finally {
       await hb.close();
     }
 
-    // Maps discovery is stubbed pending a key; it returns nothing for now.
-    const mapsLeads = await maps.discover(plan); // [needs-key:maps]
-    discoveries = discoveries.concat(mapsLeads);
-
-    // Qualify + score using the TargetProfile (requiredContactFields, extraQualifiers).
-    return qualifyLeads(discoveries, plan);
+    return leads;
   }
 }
 
@@ -117,6 +125,25 @@ function qualifierMatches(lead, qualifier) {
 }
 
 /**
+ * Score a lead against the profile from its CURRENT fields. Recomputing after
+ * enrichment naturally removes the penalty for a now-filled required field.
+ * Base is rank-based (lead.rank); each missing enrichment-gated required field
+ * costs MISSING_FIELD_PENALTY; each matched extra qualifier adds QUALIFIER_BONUS.
+ */
+function scoreLead(lead, profile) {
+  const rank = lead.rank || 1;
+  let score = Math.max(50, 100 - (rank - 1) * 8);
+  for (const f of (profile.requiredContactFields || [])) {
+    if (VERIFIABLE_NOW.has(f)) continue; // enforced by drop in qualifyLeads
+    if (!leadHas(lead, f)) score -= MISSING_FIELD_PENALTY;
+  }
+  for (const q of (profile.extraQualifiers || [])) {
+    if (qualifierMatches(lead, q)) score += QUALIFIER_BONUS;
+  }
+  return Math.max(1, Math.min(100, Math.round(score)));
+}
+
+/**
  * Map raw discoveries to qualified, scored leads using the TargetProfile.
  * - A lead must have a business name + website to exist at all.
  * - Missing a *verifiable-now* required field (website) → dropped.
@@ -129,7 +156,6 @@ function qualifierMatches(lead, qualifier) {
  */
 function qualifyLeads(discoveries, profile) {
   const required = profile.requiredContactFields || [];
-  const extras = profile.extraQualifiers || [];
   const out = [];
 
   for (const d of discoveries) {
@@ -139,34 +165,23 @@ function qualifyLeads(discoveries, profile) {
       name: null, // [needs-key:enrich]
       business: d.business,
       website: d.website,
-      email: null, // [needs-key:enrich]
-      phone: null, // [needs-key:enrich]
+      email: null, // [needs-key:enrich] — filled later by enrichmentAdapter
+      phone: null, // [needs-key:enrich] — filled later by enrichmentAdapter
       source: d.source,
       hook: null, // [needs-key:enrich] / [needs-key:llm]
+      rank: d.rank,
       score: 0,
     };
 
-    let score = Math.max(50, 100 - (d.rank - 1) * 8); // preliminary rank-based base
-    let drop = false;
-    for (const f of required) {
-      if (leadHas(lead, f)) continue;
-      if (VERIFIABLE_NOW.has(f)) {
-        drop = true; // genuinely missing a field we can confirm → disqualify
-        break;
-      }
-      score -= MISSING_FIELD_PENALTY; // can't confirm yet → down-rank, keep
-    }
-    if (drop) continue;
+    // Drop a lead only when it's missing a field we can confirm now (website).
+    const missingVerifiable = required.some((f) => VERIFIABLE_NOW.has(f) && !leadHas(lead, f));
+    if (missingVerifiable) continue;
 
-    for (const q of extras) {
-      if (qualifierMatches(lead, q)) score += QUALIFIER_BONUS;
-    }
-
-    lead.score = Math.max(1, Math.min(100, Math.round(score)));
+    lead.score = scoreLead(lead, profile);
     out.push(lead);
   }
 
   return out;
 }
 
-module.exports = { RealResearchEngine, buildQuery, qualifyLeads };
+module.exports = { RealResearchEngine, buildQuery, qualifyLeads, scoreLead };

@@ -71,23 +71,32 @@ async function run() {
     assert.strictEqual(result.engine, 'real', 'engine should be the real one');
     assert.ok(leads.length >= 3, `expected >= 3 real leads, got ${leads.length}`);
 
+    const emailRe = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
     for (const l of leads) {
       assert.ok(l.business && l.business.trim(), 'business name must be non-empty');
       assert.ok(l.website && l.website.trim(), 'website/domain must be non-empty');
       assert.ok(l.source && /^https?:\/\//.test(l.source), 'source must be a real URL');
-      // Not yet enriched — must be empty, never faked.
-      assert.strictEqual(l.email, null, 'email should be null [needs-key:enrich]');
-      assert.strictEqual(l.phone, null, 'phone should be null [needs-key:enrich]');
-      assert.strictEqual(l.hook, null, 'hook should be null [needs-key:enrich]');
+      assert.strictEqual(l.hook, null, 'hook should be null [needs-key:enrich/llm]');
+      if (l.email !== null) assert.match(l.email, emailRe, 'any filled email must look real');
     }
     console.log(`✓ ${leads.length} REAL leads, each with non-empty business + website + source URL`);
 
-    // Scoring reflects requiredContactFields: email+phone required but unobtainable
-    // (no enrichment) → every lead down-ranked below its rank-1 base of 100.
-    // Rank-1 base 100 − 12×2 = 76.
-    assert.strictEqual(leads[0].score, 76, 'rank-1 lead down-ranked to 76 for missing email+phone');
-    assert.ok(leads.every((l) => l.score <= 76), 'all leads down-ranked by required fields');
-    console.log('✓ scoring folds in requiredContactFields end-to-end (rank-1 = 76, not 100)');
+    // --- enrichment filled missing fields and removed the down-rank penalty ---
+    // rank-1 (b1) has email + phone on its contact page → both filled, score back
+    // to its full base of 100 (was 76 before enrichment).
+    const top = leads[0];
+    assert.match(top.email, emailRe, 'rank-1 email enriched from its contact page');
+    assert.ok(top.phone && top.phone.trim(), 'rank-1 phone enriched');
+    assert.strictEqual(top.score, 100, 'rank-1 penalty removed after enrichment (76 → 100)');
+    console.log(`✓ enrichment filled "${top.business}" → ${top.email} / ${top.phone}; score 76 → 100`);
+
+    // rank-2 (b2) has ONLY an email on its contact page → email filled, phone left
+    // null (never faked), so it keeps a single −12 penalty (base 92 → 80).
+    const second = leads[1];
+    assert.match(second.email, emailRe, 'rank-2 email enriched');
+    assert.strictEqual(second.phone, null, 'rank-2 phone genuinely absent → left null, not faked');
+    assert.strictEqual(second.score, 80, 'rank-2 keeps one penalty for the still-missing phone');
+    console.log('✓ honest partial enrichment: email filled, missing phone left null (score 80)');
 
     // Persistence + export actually happened through the normal pipeline.
     assert.ok(fs.existsSync(dbPath), 'sqlite db should exist');

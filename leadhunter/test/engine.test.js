@@ -10,7 +10,7 @@
 
 const assert = require('node:assert');
 const { parseTargetProfile } = require('../src/core/promptParser');
-const { buildQuery, qualifyLeads } = require('../src/core/realResearchEngine');
+const { buildQuery, qualifyLeads, scoreLead } = require('../src/core/realResearchEngine');
 
 function run() {
   // --- query shaping uses niche + location + extra qualifiers --------------
@@ -58,6 +58,18 @@ function run() {
   );
   assert.strictEqual(onlyNoSite.length, 0, 'lead missing required website is dropped');
   console.log('✓ lead missing a required, verifiable field (website) is dropped');
+
+  // --- enrichment removes the down-rank penalty once a field is filled ------
+  const reqEmailPhone = parseTargetProfile('find 50 dentists in Austin with email and phone');
+  const lead = { rank: 1, business: 'Austin Smiles', website: 'austinsmiles.example.com', email: null, phone: null };
+  assert.strictEqual(scoreLead(lead, reqEmailPhone), 76, 'missing email+phone → 100 − 24 = 76');
+  lead.email = 'hello@austinsmiles.example.com';
+  lead.phone = '+1-512-555-0101';
+  assert.strictEqual(scoreLead(lead, reqEmailPhone), 100, 'both filled → penalty removed → 100');
+
+  const partial = { rank: 2, business: 'Lone Star', website: 'lonestar.example.com', email: 'x@lonestar.example.com', phone: null };
+  assert.strictEqual(scoreLead(partial, reqEmailPhone), 80, 'rank-2 base 92, phone still missing → 80');
+  console.log('✓ scoreLead removes penalty when enrichment fills a required field (76→100; partial 80)');
 
   console.log('\nAll engine tests passed. ✅');
 }

@@ -1,6 +1,31 @@
 # LeadHunter — PROGRESS
 
-_Updated 2026-06-02. Work Order #4 — TargetProfile wired into the real engine._
+_Updated 2026-06-02. Work Order #5 — human-like contact enrichment adapter._
+
+## ✅ Done — Work Order #5 (enrichment adapter)
+- **New `enrichmentAdapter`** (`src/core/adapters/enrichmentAdapter.js`): for each
+  lead missing a required, enrichable field (**email/phone**), it visits the
+  lead's own site (its `source` page), follows a **Contact/About** link, and reads
+  the email/phone off the page — all **human-like** (real `goto` navigation +
+  real mouse click via the existing `HumanBrowser` seam). **No raw JS / synthetic
+  events**; DOM reads (`mailto:`/`tel:` links, then visible-text fallback) are used
+  only for extraction.
+- **Never fabricates:** a field is filled only if actually found; missing values
+  stay `null`.
+- **Plugs in behind the clean interface:** runs inside `findLeads()` after
+  qualification, before the pipeline's dedupe/persistence. After enrichment the
+  lead is **re-scored** via the now-shared `scoreLead()`, so filling a required
+  field **removes its down-rank penalty** automatically.
+- **3rd-party verification stubbed:** `verifyEmail()` is a no-op placeholder
+  (deliverability/MX check needs an API key) — we don't claim validity yet.
+  `[needs-key:enrich]`
+- **Offline-testable:** the fixture now serves **/contact/:id** pages (mailto/tel)
+  and a Contact link on each biz page; one business (b2) has email-only to exercise
+  honest partial enrichment.
+- **Verified:** `npm run verify:real` shows rank-1 enriched (email+phone) with its
+  penalty removed (**score 76 → 100**) and rank-2 partially enriched (email only,
+  phone left `null`, **score 80**). New offline `scoreLead` test proves penalty
+  removal (76→100; partial 80). `test:engine`, `test:parser`, `smoke` all pass.
 
 ## ✅ Done — Work Order #4 (engine consumes TargetProfile)
 - **`RealResearchEngine.plan()` now consumes the rich TargetProfile** (via
@@ -107,12 +132,10 @@ _Updated 2026-06-02. Work Order #4 — TargetProfile wired into the real engine.
   under `xvfb-run` and rendering leads (screenshot captured).
 
 ## ▶️ Next step
-1. **Enrichment adapter**: turn each discovered business + website into a verified
-   email/phone by visiting the site's contact page human-like (no key needed for
-   the on-site scrape — testable offline against the fixture by adding contact
-   pages). This is the highest-value increment and removes the down-rank penalty
-   once fields are filled. `[needs-key:enrich]` for any 3rd-party verification.
-2. **Wire the desktop app to `mode:'real'`** with a mock/real toggle + live progress.
+1. **Wire the desktop app to `mode:'real'`** with a mock/real toggle + live
+   progress streamed to the UI (currently the app/pipeline default to mock).
+2. **Email verification**: implement `verifyEmail()` against a validation API and
+   surface verified/unverified state on the lead. `[needs-key:enrich]`
 3. **Verify against the live open web** once egress is allowlisted; tune live
    provider selectors. `[needs-key:network-egress]`
 4. **More source adapters**: Maps/Places `[needs-key:maps]`, business directories.
@@ -145,8 +168,9 @@ _Updated 2026-06-02. Work Order #4 — TargetProfile wired into the real engine.
 - `[needs-key:network-egress]` — **NEW.** This session's network allowlist blocks
   open-web egress, so the live web-search path can't be verified here. Real engine
   proven via local fixture; works against the live web once egress is allowed.
-- `[needs-key:enrich]` — email/phone enrichment & verification (the real engine
-  leaves these `null` today).
+- `[needs-key:enrich]` — **narrowed.** On-site email/phone *extraction* is now
+  REAL (enrichmentAdapter). Only 3rd-party *verification* (deliverability/MX) still
+  needs a key — `verifyEmail()` is stubbed.
 - `[needs-key:maps]` — Google Maps / Places business discovery (adapter stubbed).
 - `[needs-key:llm]` — LLM planner + per-lead hook generation. **Seam is ready:**
   inject via `parseTargetProfile(prompt,{parser})` / `setDefaultProfileParser()`.

@@ -8,7 +8,8 @@
  * Routes:
  *   GET /                  search homepage with a real <form>/<input name="q">
  *   GET /search?q=...      organic results filtered from the dataset by the query
- *   GET /biz/:id           a business "website" page with name + displayed domain
+ *   GET /biz/:id           a business "website" page (name, domain, Contact link)
+ *   GET /contact/:id       the business's contact page (mailto/tel for enrichment)
  *
  * The browser really navigates, types, clicks and scrolls against this; the
  * extracted names/domains are read from really-served HTML — not fabricated.
@@ -18,15 +19,18 @@ const http = require('node:http');
 
 // A small, realistic dataset. Austin dentists (the happy path) plus a couple of
 // non-matches to prove the query actually filters.
+// `email`/`phone` are NOT shown on the result/biz page — they live on each
+// business's contact page, so enrichment has to navigate there to find them.
+// b2 deliberately has an email but NO phone, to prove partial/honest enrichment.
 const BUSINESSES = [
-  { id: 'b1', name: 'Austin Smiles Family Dental', domain: 'austinsmiles.example.com', niche: 'dentist dental', city: 'Austin' },
-  { id: 'b2', name: 'Lone Star Dental Studio', domain: 'lonestardental.example.com', niche: 'dentist dental', city: 'Austin' },
-  { id: 'b3', name: 'Congress Avenue Dentistry', domain: 'congressdentistry.example.com', niche: 'dentist dental dentistry', city: 'Austin' },
-  { id: 'b4', name: 'Barton Creek Dental Care', domain: 'bartoncreekdental.example.com', niche: 'dentist dental', city: 'Austin' },
-  { id: 'b5', name: 'Hill Country Family Dentists', domain: 'hillcountrydentists.example.com', niche: 'dentist dental', city: 'Austin' },
-  { id: 'b6', name: 'Zilker Orthodontics & Dental', domain: 'zilkerortho.example.com', niche: 'dentist dental orthodontist', city: 'Austin' },
-  { id: 'p1', name: 'Capital City Plumbing', domain: 'capitalcityplumbing.example.com', niche: 'plumber plumbing', city: 'Austin' },
-  { id: 'd1', name: 'Dallas Dental Group', domain: 'dallasdental.example.com', niche: 'dentist dental', city: 'Dallas' },
+  { id: 'b1', name: 'Austin Smiles Family Dental', domain: 'austinsmiles.example.com', niche: 'dentist dental', city: 'Austin', email: 'hello@austinsmiles.example.com', phone: '+1-512-555-0101' },
+  { id: 'b2', name: 'Lone Star Dental Studio', domain: 'lonestardental.example.com', niche: 'dentist dental', city: 'Austin', email: 'frontdesk@lonestardental.example.com' },
+  { id: 'b3', name: 'Congress Avenue Dentistry', domain: 'congressdentistry.example.com', niche: 'dentist dental dentistry', city: 'Austin', email: 'info@congressdentistry.example.com', phone: '+1-512-555-0103' },
+  { id: 'b4', name: 'Barton Creek Dental Care', domain: 'bartoncreekdental.example.com', niche: 'dentist dental', city: 'Austin', email: 'care@bartoncreekdental.example.com', phone: '+1-512-555-0104' },
+  { id: 'b5', name: 'Hill Country Family Dentists', domain: 'hillcountrydentists.example.com', niche: 'dentist dental', city: 'Austin', email: 'hello@hillcountrydentists.example.com', phone: '+1-512-555-0105' },
+  { id: 'b6', name: 'Zilker Orthodontics & Dental', domain: 'zilkerortho.example.com', niche: 'dentist dental orthodontist', city: 'Austin', email: 'smile@zilkerortho.example.com', phone: '+1-512-555-0106' },
+  { id: 'p1', name: 'Capital City Plumbing', domain: 'capitalcityplumbing.example.com', niche: 'plumber plumbing', city: 'Austin', email: 'dispatch@capitalcityplumbing.example.com', phone: '+1-512-555-0107' },
+  { id: 'd1', name: 'Dallas Dental Group', domain: 'dallasdental.example.com', niche: 'dentist dental', city: 'Dallas', email: 'contact@dallasdental.example.com', phone: '+1-214-555-0108' },
 ];
 
 function esc(s) {
@@ -83,6 +87,20 @@ function bizPage(id) {
     <h1 class="biz-name">${esc(b.name)}</h1>
     <p>${esc(b.city)} — ${esc(b.niche)}</p>
     <a class="biz-website" href="https://${esc(b.domain)}">${esc(b.domain)}</a>
+    <a class="contact-link" href="/contact/${esc(b.id)}">Contact us</a>
+  </body></html>`;
+}
+
+function contactPage(id) {
+  const b = BUSINESSES.find((x) => x.id === id);
+  if (!b) return null;
+  const email = b.email ? `<p>Email: <a class="email" href="mailto:${esc(b.email)}">${esc(b.email)}</a></p>` : '';
+  const phone = b.phone ? `<p>Call: <a class="phone" href="tel:${esc(b.phone)}">${esc(b.phone)}</a></p>` : '';
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Contact — ${esc(b.name)}</title></head>
+  <body>
+    <h1>Contact ${esc(b.name)}</h1>
+    ${email}
+    ${phone}
   </body></html>`;
 }
 
@@ -99,6 +117,12 @@ function startFixture() {
     if (u.pathname === '/search') return res.end(resultsPage(u.searchParams.get('q') || ''));
     if (u.pathname.startsWith('/biz/')) {
       const body = bizPage(u.pathname.slice('/biz/'.length));
+      if (body) return res.end(body);
+      res.statusCode = 404;
+      return res.end('<h1>404</h1>');
+    }
+    if (u.pathname.startsWith('/contact/')) {
+      const body = contactPage(u.pathname.slice('/contact/'.length));
       if (body) return res.end(body);
       res.statusCode = 404;
       return res.end('<h1>404</h1>');
