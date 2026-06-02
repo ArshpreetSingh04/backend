@@ -25,8 +25,9 @@ const { parsePrompt } = require('./promptParser');
  */
 
 class MockResearchEngine {
-  constructor() {
+  constructor(opts = {}) {
     this.name = 'mock';
+    this.progress = opts.progress || (() => {});
   }
 
   /**
@@ -61,9 +62,15 @@ class MockResearchEngine {
    */
   async findLeads(prompt, opts = {}) {
     const plan = await this.plan(prompt);
-    const leads = buildMockLeads(plan);
-    const limit = opts.limit || plan.count || leads.length;
-    return leads.slice(0, Math.min(limit, leads.length));
+    this.progress('searching', `Searching for "${plan.vertical}${plan.location ? ' in ' + plan.location : ''}" (mock)`);
+    const all = buildMockLeads(plan);
+    const limit = opts.limit || plan.count || all.length;
+    const leads = all.slice(0, Math.min(limit, all.length));
+    for (const l of leads) {
+      this.progress('business-found', `Found ${l.business}`, { business: l.business, website: l.website });
+    }
+    this.progress('qualifying', `Qualifying ${leads.length} leads`, { count: leads.length });
+    return leads;
   }
 }
 
@@ -124,7 +131,7 @@ function createEngine(opts = {}) {
     }
     case 'mock':
     default:
-      return new MockResearchEngine();
+      return new MockResearchEngine(opts);
   }
 }
 

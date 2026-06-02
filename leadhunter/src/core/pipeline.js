@@ -20,6 +20,7 @@ const os = require('node:os');
 const { createEngine } = require('./researchEngine');
 const { LeadStore, dedupeKey } = require('./storage');
 const { writeCsv } = require('./csv');
+const { makeProgress, PHASES } = require('./progress');
 
 /** Default place to keep the user's data. */
 function defaultDataDir() {
@@ -33,6 +34,7 @@ function defaultDataDir() {
  * @param {string} [opts.dbPath]
  * @param {string} [opts.csvPath]
  * @param {string} [opts.mode]      engine mode ('mock' | 'real')
+ * @param {(evt:object)=>void} [opts.onProgress]  structured progress events
  * @returns {Promise<{prompt, plan, leads, stats, dbPath, csvPath, engine}>}
  */
 async function runLeadHunt(prompt, opts = {}) {
@@ -44,8 +46,13 @@ async function runLeadHunt(prompt, opts = {}) {
   const dbPath = opts.dbPath || path.join(dataDir, 'leadhunter.db');
   const csvPath = opts.csvPath || path.join(dataDir, 'leads.csv');
 
+  // Structured progress, streamed to whoever passed opts.onProgress (e.g. the UI).
+  const progress = makeProgress(opts.onProgress);
+  const mode = opts.mode === 'real' ? 'real' : 'mock';
+
   const engine = createEngine({
-    mode: opts.mode || 'mock',
+    mode,
+    progress, // both engines emit searching / business-found / qualifying / enriching
     // Forwarded only to the real engine; ignored by the mock.
     provider: opts.provider,
     headless: opts.headless,
@@ -53,6 +60,7 @@ async function runLeadHunt(prompt, opts = {}) {
     log: opts.log,
   });
 
+  progress(PHASES.PARSING, `Parsing prompt with the ${mode} engine…`, { prompt, mode });
   const plan = await engine.plan(prompt);
   const rawLeads = await engine.findLeads(prompt, { limit: plan.count });
   const leads = dedupeInMemory(rawLeads);
@@ -67,6 +75,8 @@ async function runLeadHunt(prompt, opts = {}) {
   } finally {
     store.close();
   }
+  progress(PHASES.PERSISTED, `Saved ${stats.inserted} new (${stats.skipped} dupes) to SQLite + CSV`, { stats, dbPath, csvPath });
+  progress(PHASES.DONE, `Done — ${leads.length} leads ready`, { count: leads.length });
 
   return {
     prompt,

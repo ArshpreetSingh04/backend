@@ -60,7 +60,7 @@ async function firstWebsite(page, selectors) {
  * @param {(m:string)=>void} [args.log]
  * @returns {Promise<Array<{business:string, website:string, source:string, rank:number}>>}
  */
-async function discover({ hb, provider, profile, maxResults = 5, log = () => {} }) {
+async function discover({ hb, provider, profile, maxResults = 5, log = () => {}, progress = () => {} }) {
   const page = hb.page;
   // Prefer the engine's shaped query (niche + location + extra qualifiers);
   // fall back to the legacy niche+location for any older caller.
@@ -108,6 +108,7 @@ async function discover({ hb, provider, profile, maxResults = 5, log = () => {} 
     if (business && website) {
       out.push({ business, website, source: url, rank: i + 1 });
       log(`  #${i + 1} ${business} — ${website}`);
+      progress('business-found', `Found ${business} (${website})`, { business, website, rank: i + 1 });
     }
 
     await hb.back();

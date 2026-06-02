@@ -35,7 +35,15 @@
           />
           <button id="submit" type="submit" class="primary">Find Leads</button>
         </form>
+        <div class="controls">
+          <label class="toggle" title="Off = instant mock leads. On = drive a real browser to research the open web.">
+            <input id="realToggle" type="checkbox" />
+            <span>Use real research engine</span>
+          </label>
+          <span id="mode-hint" class="mode-hint">Mock mode — safe, instant sample leads.</span>
+        </div>
         <div id="status" class="status" role="status"></div>
+        <ol id="progress" class="progress" aria-live="polite"></ol>
       </section>
 
       <section class="results">

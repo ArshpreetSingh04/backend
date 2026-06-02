@@ -55,6 +55,7 @@ async function run() {
     assert.deepStrictEqual(planP.extraQualifiers, ['5 star reviews'], 'plan.extraQualifiers (5 star reviews)');
     assert.strictEqual(planP.query, 'plumbers Denver 5 star reviews', 'plan.query folds qualifier');
     console.log('✓ plan() reflects requiredContactFields + extraQualifiers (dentists & plumbers)');
+    const events = [];
     const result = await runLeadHunt(PROMPT, {
       mode: 'real',
       provider: makeFixtureProvider(fixture.url),
@@ -63,9 +64,20 @@ async function run() {
       dataDir,
       dbPath,
       csvPath,
+      onProgress: (evt) => events.push(evt),
     });
 
     const leads = result.leads;
+
+    // --- live progress streamed through the pipeline ----------------------
+    const phases = events.map((e) => e.phase);
+    for (const required of ['parsing-prompt', 'searching', 'business-found', 'qualifying', 'enriching', 'persisted', 'done']) {
+      assert.ok(phases.includes(required), `progress should include "${required}" (got: ${[...new Set(phases)].join(', ')})`);
+    }
+    const foundEvents = events.filter((e) => e.phase === 'business-found');
+    assert.ok(foundEvents.length >= 3, `expected >= 3 business-found events, got ${foundEvents.length}`);
+    assert.strictEqual(foundEvents.length, leads.length, 'one business-found event per lead in the table');
+    console.log(`✓ streamed ${events.length} progress events (${foundEvents.length} business-found) through phases: ${[...new Set(phases)].join(' → ')}`);
 
     // --- assertions -------------------------------------------------------
     assert.strictEqual(result.engine, 'real', 'engine should be the real one');

@@ -1,6 +1,27 @@
 # LeadHunter — PROGRESS
 
-_Updated 2026-06-02. Work Order #5 — human-like contact enrichment adapter._
+_Updated 2026-06-02. Work Order #6 — desktop app wired to the real engine + live progress._
+
+## ✅ Done — Work Order #6 (mock/real toggle + live progress)
+- **Mock/real toggle** in the desktop UI ("Use real research engine") next to the
+  Find Leads box. **Default stays MOCK** for safety; toggling on runs the pipeline
+  with `mode:'real'` (the real `RealResearchEngine` path).
+- **Structured progress events** streamed engine → pipeline → IPC → UI: a tiny
+  `progress(phase, message, data)` helper (`src/core/progress.js`) threads through
+  both engines and the web-search + enrichment adapters. Phases: `parsing-prompt`,
+  `searching`, `business-found`, `qualifying`, `enriching`, `persisted`, `done`,
+  `error`. Rendered as a **live activity list** under the box (with phase icons),
+  so the user sees what the humaning engine is doing instead of a frozen screen.
+- **Wired through the existing clean interface** (`opts.onProgress` on the
+  pipeline, `progress` on the engine) — **no new raw JS / synthetic events** added
+  to the product browser automation.
+- **Real leads flow into the same table + SQLite + CSV** as mock (unchanged
+  persistence path).
+- **Verified OFFLINE:** `npm run verify:real` now also asserts the event stream
+  (21 events, 8 `business-found`, all phases present) alongside the existing
+  leads→DB→CSV + enrichment checks. A headless Electron boot confirms the toggle
+  renders and a mock hunt streams progress through the real IPC path into the
+  table. `smoke`, `test:engine`, `test:parser` still pass.
 
 ## ✅ Done — Work Order #5 (enrichment adapter)
 - **New `enrichmentAdapter`** (`src/core/adapters/enrichmentAdapter.js`): for each
@@ -132,9 +153,7 @@ _Updated 2026-06-02. Work Order #5 — human-like contact enrichment adapter._
   under `xvfb-run` and rendering leads (screenshot captured).
 
 ## ▶️ Next step
-1. **Wire the desktop app to `mode:'real'`** with a mock/real toggle + live
-   progress streamed to the UI (currently the app/pipeline default to mock).
-2. **Email verification**: implement `verifyEmail()` against a validation API and
+1. **Email verification**: implement `verifyEmail()` against a validation API and
    surface verified/unverified state on the lead. `[needs-key:enrich]`
 3. **Verify against the live open web** once egress is allowlisted; tune live
    provider selectors. `[needs-key:network-egress]`

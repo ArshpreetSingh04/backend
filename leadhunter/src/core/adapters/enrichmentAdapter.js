@@ -121,13 +121,14 @@ async function enrichOne({ hb, lead, missing, log }) {
  * @param {object} args.profile  TargetProfile (requiredContactFields)
  * @param {(m:string)=>void} [args.log]
  */
-async function enrichLeads({ hb, leads, profile, log = () => {} }) {
+async function enrichLeads({ hb, leads, profile, log = () => {}, progress = () => {} }) {
   const wanted = (profile.requiredContactFields || []).filter((f) => ENRICHABLE.has(f));
   if (!wanted.length) return leads;
 
   for (const lead of leads) {
     const missing = wanted.filter((f) => !leadHas(lead, f));
     if (!missing.length) continue;
+    progress('enriching', `Enriching ${lead.business} (looking for ${missing.join(', ')})`, { business: lead.business, missing });
     const found = await enrichOne({ hb, lead, missing, log });
     Object.assign(lead, found);
   }

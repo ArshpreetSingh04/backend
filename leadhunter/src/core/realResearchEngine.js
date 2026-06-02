@@ -32,6 +32,7 @@ class RealResearchEngine {
     this.headless = opts.headless !== false;
     this.maxResults = opts.maxResults || 5;
     this.log = opts.log || ((m) => console.log(`[real] ${m}`));
+    this.progress = opts.progress || (() => {});
   }
 
   async plan(prompt) {
@@ -65,24 +66,27 @@ class RealResearchEngine {
     let leads = [];
     try {
       await hb.launch();
+      this.progress('searching', `Opening ${this.provider.name} and searching "${plan.query}"`, { query: plan.query });
       let discoveries = await webSearch.discover({
         hb,
         provider: this.provider,
         profile: plan,
         maxResults: limit,
         log: this.log,
+        progress: this.progress,
       });
 
       // Maps discovery is stubbed pending a key; it returns nothing for now.
       discoveries = discoveries.concat(await maps.discover(plan)); // [needs-key:maps]
 
       // Qualify + score using the TargetProfile.
+      this.progress('qualifying', `Qualifying ${discoveries.length} businesses against [${plan.requiredContactFields.join(', ')}]`, { count: discoveries.length });
       leads = qualifyLeads(discoveries, plan);
 
       // Enrich leads still missing a required contact field (email/phone) by
       // visiting their site human-like, then re-score — filling a required field
       // removes its down-rank penalty.
-      leads = await enrich.enrichLeads({ hb, leads, profile: plan, log: this.log });
+      leads = await enrich.enrichLeads({ hb, leads, profile: plan, log: this.log, progress: this.progress });
       for (const lead of leads) lead.score = scoreLead(lead, plan);
     } finally {
       await hb.close();

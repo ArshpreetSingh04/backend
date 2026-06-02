@@ -31,12 +31,23 @@ function createWindow() {
 }
 
 // --- IPC: the one channel the renderer uses to run a hunt -------------------
-ipcMain.handle('leadhunter:hunt', async (_event, prompt) => {
+ipcMain.handle('leadhunter:hunt', async (event, payload = {}) => {
+  const { prompt, mode } = typeof payload === 'string' ? { prompt: payload } : payload;
+  // Stream structured progress back to the renderer as the run proceeds.
+  const onProgress = (evt) => {
+    if (!event.sender.isDestroyed()) event.sender.send('leadhunter:progress', evt);
+  };
   try {
-    const result = await runLeadHunt(prompt);
+    const result = await runLeadHunt(prompt, {
+      mode: mode === 'real' ? 'real' : 'mock', // default MOCK for safety
+      headless: true, // the real engine drives its own out-of-process Chromium
+      onProgress,
+    });
     return { ok: true, result };
   } catch (err) {
-    return { ok: false, error: err && err.message ? err.message : String(err) };
+    const message = err && err.message ? err.message : String(err);
+    onProgress({ phase: 'error', message, data: null, t: Date.now() });
+    return { ok: false, error: message };
   }
 });
 

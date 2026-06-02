@@ -10,6 +10,30 @@ const statusEl = document.getElementById('status');
 const tbody = document.getElementById('resultsBody');
 const emptyEl = document.getElementById('empty');
 const openDataBtn = document.getElementById('openData');
+const realToggle = document.getElementById('realToggle');
+const modeHint = document.getElementById('mode-hint');
+const progressEl = document.getElementById('progress');
+
+// Reflect the chosen mode in the hint text.
+realToggle.addEventListener('change', () => {
+  modeHint.textContent = realToggle.checked
+    ? 'Real mode — drives a real browser to research the open web (slower).'
+    : 'Mock mode — safe, instant sample leads.';
+});
+
+// Icons per progress phase, for a readable live activity log.
+const PHASE_ICON = {
+  'parsing-prompt': '📝',
+  searching: '🔎',
+  'business-found': '🏢',
+  qualifying: '⚖️',
+  enriching: '✉️',
+  persisted: '💾',
+  done: '✅',
+  error: '⚠️',
+};
+
+let unsubscribeProgress = null;
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -19,10 +43,21 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
+  const mode = realToggle.checked ? 'real' : 'mock';
   setBusy(true);
-  setStatus('Planning the search and gathering leads…');
+  clearProgress();
+  setStatus(mode === 'real' ? 'Starting the real research engine…' : 'Gathering mock leads…');
 
-  const resp = await window.leadhunter.hunt(prompt);
+  // Subscribe to live progress for this run.
+  if (unsubscribeProgress) unsubscribeProgress();
+  unsubscribeProgress = window.leadhunter.onProgress(addProgress);
+
+  const resp = await window.leadhunter.hunt(prompt, mode);
+
+  if (unsubscribeProgress) {
+    unsubscribeProgress();
+    unsubscribeProgress = null;
+  }
 
   if (!resp.ok) {
     setStatus(resp.error || 'Something went wrong.', 'error');
@@ -30,16 +65,33 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
-  const { leads, stats, csvPath } = resp.result;
+  const { leads, stats, csvPath, engine } = resp.result;
   renderLeads(leads);
   setStatus(
-    `Found ${stats.found} • saved ${stats.inserted} new (${stats.skipped} dupes skipped) • CSV: ${csvPath}`,
+    `[${engine}] Found ${stats.found} • saved ${stats.inserted} new (${stats.skipped} dupes skipped) • CSV: ${csvPath}`,
     'ok',
   );
   setBusy(false);
 });
 
 openDataBtn.addEventListener('click', () => window.leadhunter.openDataDir());
+
+function clearProgress() {
+  progressEl.replaceChildren();
+}
+
+function addProgress(evt) {
+  const li = document.createElement('li');
+  li.className = 'progress-item phase-' + evt.phase;
+  const icon = document.createElement('span');
+  icon.className = 'p-icon';
+  icon.textContent = PHASE_ICON[evt.phase] || '•';
+  const text = document.createElement('span');
+  text.textContent = evt.message || evt.phase;
+  li.append(icon, text);
+  progressEl.append(li);
+  progressEl.scrollTop = progressEl.scrollHeight;
+}
 
 function renderLeads(leads) {
   tbody.replaceChildren();
