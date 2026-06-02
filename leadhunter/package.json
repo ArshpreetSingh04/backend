@@ -12,6 +12,7 @@
     "hunt": "node src/cli.js",
     "smoke": "node test/smoke.js",
     "test:parser": "node test/parser.test.js",
+    "test:engine": "node test/engine.test.js",
     "verify:real": "node test/verify-real.js"
   },
   "devDependencies": {

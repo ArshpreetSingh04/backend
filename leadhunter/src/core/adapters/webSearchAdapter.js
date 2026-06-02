@@ -62,7 +62,10 @@ async function firstWebsite(page, selectors) {
  */
 async function discover({ hb, provider, profile, maxResults = 5, log = () => {} }) {
   const page = hb.page;
-  const query = [profile.vertical, profile.location].filter(Boolean).join(' ').trim();
+  // Prefer the engine's shaped query (niche + location + extra qualifiers);
+  // fall back to the legacy niche+location for any older caller.
+  const query = (profile.query
+    || [profile.niche || profile.vertical, profile.location].filter(Boolean).join(' ')).trim();
   log(`web-search query: "${query}" via ${provider.name}`);
 
   // Open the search engine and type the query like a person.

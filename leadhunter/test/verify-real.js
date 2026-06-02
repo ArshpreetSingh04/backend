@@ -21,6 +21,7 @@ const path = require('node:path');
 
 const { startFixture } = require('./fixtures/searchFixture');
 const { makeFixtureProvider } = require('../src/core/adapters/providers');
+const { RealResearchEngine } = require('../src/core/realResearchEngine');
 const { runLeadHunt } = require('../src/core/pipeline');
 
 const PROMPT = 'find 50 dentists in Austin with email and phone';
@@ -35,6 +36,25 @@ async function run() {
   console.log(`Prompt: "${PROMPT}"\n`);
 
   try {
+    // --- plan() now consumes the TargetProfile (no browser needed) ---------
+    const engine = new RealResearchEngine({ provider: makeFixtureProvider(fixture.url) });
+
+    const planD = await engine.plan('find 50 dentists in Austin with email and phone');
+    assert.strictEqual(planD.niche, 'dentists', 'plan.niche');
+    assert.strictEqual(planD.location, 'Austin', 'plan.location');
+    assert.strictEqual(planD.count, 50, 'plan.count');
+    assert.deepStrictEqual(planD.requiredContactFields, ['email', 'phone'], 'plan.requiredContactFields');
+    assert.deepStrictEqual(planD.extraQualifiers, [], 'plan.extraQualifiers');
+    assert.strictEqual(planD.query, 'dentists Austin', 'plan.query shaped from profile');
+
+    const planP = await engine.plan('get 20 plumbers near Denver with a website and 5 star reviews');
+    assert.strictEqual(planP.niche, 'plumbers', 'plan.niche (plumbers)');
+    assert.strictEqual(planP.location, 'Denver', 'plan.location (Denver)');
+    assert.strictEqual(planP.count, 20, 'plan.count (20)');
+    assert.deepStrictEqual(planP.requiredContactFields, ['website'], 'plan.requiredContactFields (website)');
+    assert.deepStrictEqual(planP.extraQualifiers, ['5 star reviews'], 'plan.extraQualifiers (5 star reviews)');
+    assert.strictEqual(planP.query, 'plumbers Denver 5 star reviews', 'plan.query folds qualifier');
+    console.log('✓ plan() reflects requiredContactFields + extraQualifiers (dentists & plumbers)');
     const result = await runLeadHunt(PROMPT, {
       mode: 'real',
       provider: makeFixtureProvider(fixture.url),
@@ -61,6 +81,13 @@ async function run() {
       assert.strictEqual(l.hook, null, 'hook should be null [needs-key:enrich]');
     }
     console.log(`✓ ${leads.length} REAL leads, each with non-empty business + website + source URL`);
+
+    // Scoring reflects requiredContactFields: email+phone required but unobtainable
+    // (no enrichment) → every lead down-ranked below its rank-1 base of 100.
+    // Rank-1 base 100 − 12×2 = 76.
+    assert.strictEqual(leads[0].score, 76, 'rank-1 lead down-ranked to 76 for missing email+phone');
+    assert.ok(leads.every((l) => l.score <= 76), 'all leads down-ranked by required fields');
+    console.log('✓ scoring folds in requiredContactFields end-to-end (rank-1 = 76, not 100)');
 
     // Persistence + export actually happened through the normal pipeline.
     assert.ok(fs.existsSync(dbPath), 'sqlite db should exist');

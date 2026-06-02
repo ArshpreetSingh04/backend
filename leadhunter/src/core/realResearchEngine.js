@@ -11,7 +11,7 @@
  * preliminary, honest signal derived from organic search rank.
  */
 
-const { parsePrompt } = require('./promptParser');
+const { parseTargetProfile } = require('./promptParser');
 const { HumanBrowser } = require('./browser/humanBrowser');
 const webSearch = require('./adapters/webSearchAdapter');
 const maps = require('./adapters/mapsAdapter');
@@ -34,17 +34,24 @@ class RealResearchEngine {
   }
 
   async plan(prompt) {
-    const parsed = parsePrompt(prompt);
+    // WO#4: consume the rich TargetProfile (not the legacy parsePrompt view).
+    const profile = parseTargetProfile(prompt);
+    const query = buildQuery(profile);
     return {
-      ...parsed,
+      ...profile, // raw, niche, role, location, count, requiredContactFields, extraQualifiers
+      query, // niche + location + extraQualifiers, ready to type into the search box
       engine: this.name,
       provider: this.provider.name,
       sources: ['web_search', 'maps (stubbed) [needs-key:maps]'],
+      // Backward-compatible aliases for the adapter / older consumers.
+      vertical: profile.niche,
+      fields: profile.requiredContactFields,
       steps: [
-        `Open ${this.provider.name} and type "${parsed.vertical}${parsed.location ? ' ' + parsed.location : ''}"`,
+        `Open ${this.provider.name} and type "${query}"`,
         'Press Enter, wait for organic results, scroll human-like',
         `Open the top ${this.maxResults} results and read business name + website`,
-        'Return leads; email/phone/hook left empty [needs-key:enrich]',
+        `Qualify on required fields [${profile.requiredContactFields.join(', ')}]` +
+          (profile.extraQualifiers.length ? `; score boosts for: ${profile.extraQualifiers.join(', ')}` : ''),
       ],
     };
   }
@@ -72,19 +79,94 @@ class RealResearchEngine {
     const mapsLeads = await maps.discover(plan); // [needs-key:maps]
     discoveries = discoveries.concat(mapsLeads);
 
-    return discoveries
-      .filter((d) => d.business && d.website)
-      .map((d) => ({
-        name: null, // contact person unknown until enrichment [needs-key:enrich]
-        business: d.business, // REAL business name from the result page
-        website: d.website, // REAL website/domain
-        email: null, // [needs-key:enrich]
-        phone: null, // [needs-key:enrich]
-        source: d.source, // REAL source URL where it was discovered
-        hook: null, // [needs-key:enrich] / [needs-key:llm]
-        score: Math.max(50, 100 - (d.rank - 1) * 8), // preliminary, rank-based
-      }));
+    // Qualify + score using the TargetProfile (requiredContactFields, extraQualifiers).
+    return qualifyLeads(discoveries, plan);
   }
 }
 
-module.exports = { RealResearchEngine };
+// ---------------------------------------------------------------------------
+// Pure helpers (no browser) — exported so they can be unit-tested offline.
+// ---------------------------------------------------------------------------
+
+/** Shape the search query from the profile: niche + location + extra qualifiers. */
+function buildQuery(profile) {
+  return [profile.niche, profile.location, ...(profile.extraQualifiers || [])]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Contact fields the discovery step can actually confirm right now. Everything
+// else (email/phone/linkedin/address) needs enrichment we don't have yet, so a
+// missing such field down-ranks a lead rather than dropping it. [needs-key:enrich]
+const VERIFIABLE_NOW = new Set(['website']);
+const MISSING_FIELD_PENALTY = 12;
+const QUALIFIER_BONUS = 6;
+
+function leadHas(lead, field) {
+  const v = lead[field];
+  return v != null && String(v).trim() !== '';
+}
+
+/** True if any meaningful word of the qualifier appears in the lead's text. */
+function qualifierMatches(lead, qualifier) {
+  const hay = `${lead.business || ''} ${lead.website || ''}`.toLowerCase();
+  const tokens = (qualifier.toLowerCase().match(/[a-z]{3,}/g) || []);
+  return tokens.some((t) => hay.includes(t));
+}
+
+/**
+ * Map raw discoveries to qualified, scored leads using the TargetProfile.
+ * - A lead must have a business name + website to exist at all.
+ * - Missing a *verifiable-now* required field (website) → dropped.
+ * - Missing an enrichment-gated required field (email/phone/…) → down-ranked,
+ *   never faked. [needs-key:enrich]
+ * - Each matched extra qualifier nudges the score up.
+ *
+ * @param {Array<{business,website,source,rank}>} discoveries
+ * @param {object} profile  TargetProfile (requiredContactFields, extraQualifiers)
+ */
+function qualifyLeads(discoveries, profile) {
+  const required = profile.requiredContactFields || [];
+  const extras = profile.extraQualifiers || [];
+  const out = [];
+
+  for (const d of discoveries) {
+    if (!d.business || !d.website) continue; // every lead needs a name + site
+
+    const lead = {
+      name: null, // [needs-key:enrich]
+      business: d.business,
+      website: d.website,
+      email: null, // [needs-key:enrich]
+      phone: null, // [needs-key:enrich]
+      source: d.source,
+      hook: null, // [needs-key:enrich] / [needs-key:llm]
+      score: 0,
+    };
+
+    let score = Math.max(50, 100 - (d.rank - 1) * 8); // preliminary rank-based base
+    let drop = false;
+    for (const f of required) {
+      if (leadHas(lead, f)) continue;
+      if (VERIFIABLE_NOW.has(f)) {
+        drop = true; // genuinely missing a field we can confirm → disqualify
+        break;
+      }
+      score -= MISSING_FIELD_PENALTY; // can't confirm yet → down-rank, keep
+    }
+    if (drop) continue;
+
+    for (const q of extras) {
+      if (qualifierMatches(lead, q)) score += QUALIFIER_BONUS;
+    }
+
+    lead.score = Math.max(1, Math.min(100, Math.round(score)));
+    out.push(lead);
+  }
+
+  return out;
+}
+
+module.exports = { RealResearchEngine, buildQuery, qualifyLeads };

@@ -1,6 +1,27 @@
 # LeadHunter — PROGRESS
 
-_Updated 2026-06-02. Work Order #3 — real prompt → TargetProfile parsing._
+_Updated 2026-06-02. Work Order #4 — TargetProfile wired into the real engine._
+
+## ✅ Done — Work Order #4 (engine consumes TargetProfile)
+- **`RealResearchEngine.plan()` now consumes the rich TargetProfile** (via
+  `parseTargetProfile`) instead of the legacy `parsePrompt` view: `niche/role`,
+  `location`, `count`, `requiredContactFields`, `extraQualifiers`.
+- **Query shaping:** `plan()` builds a `query` from **niche + location +
+  extraQualifiers** (e.g. `"plumbers Denver 5 star reviews"`); the web-search
+  adapter now types this shaped query (falls back to niche+location for older
+  callers).
+- **Qualification + scoring uses the profile** (pure, exported `qualifyLeads()`):
+  a lead needs a business name + website to exist; a missing **verifiable-now**
+  required field (`website`) **drops** the lead; a missing enrichment-gated field
+  (`email`/`phone`/…) **down-ranks** it (−12 each), never faked
+  `[needs-key:enrich]`; each matched **extraQualifier** boosts the score (+6).
+- **`parsePrompt()` kept as a backward-compatible shim** for the mock engine, CLI
+  and smoke test. Default mock-vs-real entry points were **not** touched.
+- **Verified OFFLINE:** new `npm run test:engine` (query shaping + scoring,
+  no browser); `npm run verify:real` now asserts `plan()` reflects
+  `requiredContactFields` + `extraQualifiers` for **dentists & plumbers** and that
+  scoring folds them in end-to-end (rank-1 = **76**, not 100, for missing
+  email+phone). `npm run test:parser` and `npm run smoke` still pass.
 
 ## ✅ Done — Work Order #3 (prompt → TargetProfile parser)
 - **Real deterministic parser** (`src/core/promptParser.js`) converts any
@@ -86,19 +107,18 @@ _Updated 2026-06-02. Work Order #3 — real prompt → TargetProfile parsing._
   under `xvfb-run` and rendering leads (screenshot captured).
 
 ## ▶️ Next step
-1. **Feed the TargetProfile into the engine**: have `plan()` consume the richer
-   profile (use `requiredContactFields` + `extraQualifiers` to shape the query and
-   filter results) instead of the legacy `parsePrompt` view.
-2. **Enrichment adapter**: turn each discovered business + website into a verified
-   email/phone (visit the contact page human-like, and/or a verification provider).
-   Fills the `[needs-key:enrich]` gap.
+1. **Enrichment adapter**: turn each discovered business + website into a verified
+   email/phone by visiting the site's contact page human-like (no key needed for
+   the on-site scrape — testable offline against the fixture by adding contact
+   pages). This is the highest-value increment and removes the down-rank penalty
+   once fields are filled. `[needs-key:enrich]` for any 3rd-party verification.
+2. **Wire the desktop app to `mode:'real'`** with a mock/real toggle + live progress.
 3. **Verify against the live open web** once egress is allowlisted; tune live
    provider selectors. `[needs-key:network-egress]`
-4. **Wire the desktop app to `mode:'real'`** with a mock/real toggle + live progress.
-5. **More source adapters**: Maps/Places `[needs-key:maps]`, business directories.
-6. **Pluggable LLM parser/planner & per-lead hooks** via the new parser seam.
+4. **More source adapters**: Maps/Places `[needs-key:maps]`, business directories.
+5. **Pluggable LLM parser/planner & per-lead hooks** via the parser seam.
    `[needs-key:llm]`
-7. **Per-run CSV export + download button**; native-messaging bridge to the
+6. **Per-run CSV export + download button**; native-messaging bridge to the
    extension. `[needs-key:native-host]`
 
 ## 🟡 Open decisions
